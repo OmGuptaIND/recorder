@@ -1,0 +1,20 @@
+{
+    "name": "Golang",
+    "build": {
+        "dockerfile": "../Dockerfile"
+    },
+    "workspaceFolder": "/app",
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached"
+    ],
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "terminal.integrated.shell.linux": "/bin/bash"
+            }
+        }
+    },
+    "forwardPorts": [4000],
+    "postCreateCommand": "echo 'Ready!'",
+    "remoteUser": "root"
+}
