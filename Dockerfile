@@ -60,6 +60,8 @@ RUN chromium --version && \
 # Add pulseaudio as a root user.
 RUN adduser root pulse-access
 
+RUN chmod +x pulseaudio.sh
+
 COPY pulseaudio.sh .
 
 ENTRYPOINT ["./pulseaudio.sh"]
