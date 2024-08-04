@@ -2,32 +2,31 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"sync"
 
+	"github.com/OmGuptaIND/display"
+	"github.com/OmGuptaIND/recorder"
+	store "github.com/OmGuptaIND/store"
 	"github.com/gofiber/fiber/v3"
 )
 
 // ApiServerOptions defines the configuration options for the ApiServer.
 type ApiServerOptions struct {
-	Port int
-	Wg   *sync.WaitGroup
-	Ctx  context.Context
+	Port    int
+	Wg      *sync.WaitGroup
+	Ctx     context.Context
+	Store   *store.Store
+	Display *display.Display
 }
 
 // ApiServer represents an HTTP server that provides endpoints to manage media nodes.
 type ApiServer struct {
 	app  *fiber.App
 	opts ApiServerOptions
-}
-
-// ResultStruct defines the JSON structure for node results.
-type ResultStruct struct {
-	Status string `json:"status"`
-	MomoId string `json:"momoId"`
-	Region string `badgerholdIndex:"IdxRegion" json:"region"`
 }
 
 // NewApiServer initializes a new API server with the specified options.
@@ -42,6 +41,8 @@ func NewApiServer(opts ApiServerOptions) *ApiServer {
 	}
 
 	app.Get("/ping", apiServer.pingHandler)
+	app.Post("/start-recording", apiServer.startRecording)
+	app.Patch("/stop-recording", apiServer.stopRecording)
 	app.Use(apiServer.notFoundHandler)
 
 	return apiServer
@@ -50,6 +51,60 @@ func NewApiServer(opts ApiServerOptions) *ApiServer {
 // `helloHandler` responds with a simple greeting.
 func (a *ApiServer) pingHandler(c fiber.Ctx) error {
 	return c.SendString("pong")
+}
+
+func (a *ApiServer) startRecording(c fiber.Ctx) error {
+	var req StartRecordingRequest
+
+	if err := json.Unmarshal(c.Body(), &req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
+	}
+
+	if err := a.opts.Display.LaunchChrome(req.Url); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Chrome")
+	}
+
+	rec := recorder.NewRecorder(recorder.NewRecorderOptions{
+		Width:   1280,
+		Height:  720,
+		Depth:   24,
+		Display: ":99",
+	})
+
+	if err := rec.StartRecording(); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording")
+	}
+
+	a.opts.Store.AddRecording(rec.ID, rec)
+
+	return c.JSON(StartRecordingResponse{
+		Status: "Recording started",
+		Id:     rec.ID,
+	})
+}
+
+func (a *ApiServer) stopRecording(c fiber.Ctx) error {
+	var req StopRecordingRequest
+
+	if err := json.Unmarshal(c.Body(), &req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
+	}
+
+	rec, ok := a.opts.Store.GetRecording(req.Id)
+
+	if !ok {
+		return fiber.NewError(fiber.StatusNotFound, "Recording not found")
+	}
+
+	if err := rec.StopRecording(); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to stop recording")
+	}
+
+	a.opts.Store.RemoveRecording(req.Id)
+
+	return c.JSON(StopRecordingResponse{
+		Status: "Recording stopped",
+	})
 }
 
 // errorHandler handles all internal server errors.
@@ -81,15 +136,10 @@ func (a *ApiServer) Start() <-chan struct{} {
 			DisableStartupMessage: true,
 			GracefulContext:       a.opts.Ctx,
 			OnShutdownError: func(err error) {
-				log.Printf("Error shutting down the server: %v\n", err)
-				if a.opts.Wg != nil {
-					a.opts.Wg.Done()
-				}
+				log.Printf("error shutting down the server: %v\n", err)
 			},
 			OnShutdownSuccess: func() {
-				if a.opts.Wg != nil {
-					a.opts.Wg.Done()
-				}
+				log.Println("server shutdown successfully")
 			},
 			ListenerAddrFunc: func(net.Addr) {
 				log.Printf("apiServer listening on :%d \n", a.opts.Port)

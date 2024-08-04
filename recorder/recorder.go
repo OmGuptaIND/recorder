@@ -3,10 +3,14 @@ package recorder
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type NewRecorderOptions struct {
@@ -17,16 +21,26 @@ type NewRecorderOptions struct {
 }
 
 type Recorder struct {
-	Ctx    context.Context
-	ffmpeg *exec.Cmd
-	opts   NewRecorderOptions
+	ID          string
+	Ctx         context.Context
+	ffmpeg      *exec.Cmd
+	ffmpegStdin io.WriteCloser
+	opts        NewRecorderOptions
+	wg          *sync.WaitGroup
 }
 
 func NewRecorder(opts NewRecorderOptions) *Recorder {
 	return &Recorder{
+		ID:   uuid.New().String(),
 		opts: opts,
 		Ctx:  context.Background(),
+		wg:   &sync.WaitGroup{},
 	}
+}
+
+// RecordingPath returns the path where the recording will be saved.
+func (r *Recorder) RecordingPath() string {
+	return fmt.Sprintf("./out/%s.mp4", r.ID)
 }
 
 func (r *Recorder) StartRecording() error {
@@ -34,23 +48,51 @@ func (r *Recorder) StartRecording() error {
 	videoSize := fmt.Sprintf("%dx%d", r.opts.Width, r.opts.Height)
 
 	cmd := exec.Command("ffmpeg",
-		"-loglevel", "debug",
+		"-loglevel", "trace",
 		"-video_size", videoSize,
 		"-framerate", "25",
 		"-f", "x11grab",
 		"-i", fmt.Sprintf("%s.0", r.opts.Display),
+		"-f", "pulse",
+		"-i", "grab.monitor",
+
 		"-c:v", "libx264", //
 		"-vf", "scale=1280:720",
-		"-preset", "ultrafast",
+		"-preset", "fast",
 		"-crf", "23",
 		"-pix_fmt", "yuv420p",
-		"output.mp4")
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-y",
+		r.RecordingPath())
+
+	ioCloser, err := cmd.StdinPipe()
+
+	if err != nil {
+		return fmt.Errorf("failed to open stdin pipe: %v", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %v", err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start FFmpeg: %v", err)
 	}
 
+	copyOutput := func(writer io.Writer, reader io.Reader, name string) {
+		_, err := io.Copy(writer, reader)
+		if err != nil && err != io.EOF {
+			log.Printf("Error copying %s: %v", name, err)
+		}
+	}
+
+	// Start goroutines to copy stdout and stderr
+	go copyOutput(os.Stderr, stderr, "stderr")
+
 	r.ffmpeg = cmd
+	r.ffmpegStdin = ioCloser
 
 	return nil
 }
@@ -65,9 +107,14 @@ func (r *Recorder) StopRecording() error {
 	ctx, cancel := context.WithTimeout(r.Ctx, 10*time.Second)
 	defer cancel()
 
-	if err := r.ffmpeg.Process.Signal(os.Interrupt); err != nil {
+	v, err := r.ffmpegStdin.Write([]byte("q"))
+	defer r.ffmpegStdin.Close()
+
+	if err != nil {
 		return fmt.Errorf("failed to send interrupt signal: %v", err)
 	}
+
+	log.Println("Interrupt signal sent to FFmpeg", v)
 
 	done := make(chan error, 1)
 	go func() {
@@ -97,7 +144,7 @@ func (r *Recorder) StopRecording() error {
 }
 
 func (r *Recorder) verifyOutputFile() error {
-	info, err := os.Stat("output.mp4")
+	info, err := os.Stat(r.RecordingPath())
 	if err != nil {
 		return fmt.Errorf("failed to stat output file: %v", err)
 	}
@@ -106,7 +153,7 @@ func (r *Recorder) verifyOutputFile() error {
 	}
 	log.Printf("Output file size: %d bytes", info.Size())
 
-	cmd := exec.Command("ffprobe", "-v", "error", "output.mp4")
+	cmd := exec.Command("ffprobe", "-v", "error", r.RecordingPath())
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffprobe check failed: %v, output: %s", err, output)
 	}

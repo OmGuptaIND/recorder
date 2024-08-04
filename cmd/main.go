@@ -9,7 +9,7 @@ import (
 	"github.com/OmGuptaIND/api"
 	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/pkg"
-	"github.com/OmGuptaIND/recorder"
+	store "github.com/OmGuptaIND/store"
 )
 
 var wg sync.WaitGroup
@@ -18,16 +18,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	apiServer := api.NewApiServer(api.ApiServerOptions{
-		Port: 3000,
-		Wg:   &wg,
-		Ctx:  ctx,
-	})
+	// Create a new store
+	store := store.NewStore()
 
-	wg.Add(1)
-	apiServer.Start()
-	defer apiServer.Close()
-
+	// Create a new display
 	display := display.NewDisplay(display.DisplayOptions{
 		Width:   1280,
 		Height:  720,
@@ -35,26 +29,30 @@ func main() {
 		Display: ":99",
 	})
 
-	if err := display.Launch("https://giphy.com"); err != nil {
+	if err := display.LaunchXvfb(); err != nil {
 		log.Panicln(err)
 	}
 
 	defer display.Close()
 
-	display.TakeScreenshot()
-
-	recorder := recorder.NewRecorder(recorder.NewRecorderOptions{
-		Width:   1280,
-		Height:  720,
-		Depth:   24,
-		Display: ":99",
+	// Create a new API server
+	apiServer := api.NewApiServer(api.ApiServerOptions{
+		Port:  3000,
+		Ctx:   ctx,
+		Store: store,
+		Display: display,
 	})
 
-	if err := recorder.StartRecording(); err != nil {
-		log.Panicln(err)
-	}
 
-	defer recorder.StopRecording()
+	// Start the API server 
+	wg.Add(1)
+	apiServer.Start()
+	defer func() {
+		apiServer.Close()
+		wg.Done()
+	}()
+
+
 
 	// Handle signals
 	sig := pkg.HandleSignal()

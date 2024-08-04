@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     xvfb \
     bash \
+    pulseaudio \
     ffmpeg \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -56,4 +57,9 @@ RUN chromium --version && \
     chromedriver --version && \
     ffmpeg -version
 
-CMD ["/bin/bash"]
+# Add pulseaudio as a root user.
+RUN adduser root pulse-access
+
+COPY pulseaudio.sh .
+
+ENTRYPOINT ["./pulseaudio.sh"]

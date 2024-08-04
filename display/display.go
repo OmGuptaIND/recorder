@@ -35,11 +35,11 @@ func NewDisplay(opts DisplayOptions) *Display {
 
 // Launch starts the Xvfb server and Chrome with the specified URL.
 func (d *Display) Launch(url string) error {
-	if err := d.launchXvfb(d.opts.Display); err != nil {
+	if err := d.LaunchXvfb(); err != nil {
 		return err
 	}
 
-	if err := d.launchChrome(url); err != nil {
+	if err := d.LaunchChrome(url); err != nil {
 		return err
 	}
 
@@ -49,11 +49,11 @@ func (d *Display) Launch(url string) error {
 }
 
 // Start launches the Xvfb server with the specified display.
-func (d *Display) launchXvfb(display string) error {
+func (d *Display) LaunchXvfb() error {
 	log.Println("Starting Xvfb server...")
 
 	dims := fmt.Sprintf("%dx%dx%d", d.opts.Width, d.opts.Height, d.opts.Depth)
-	xvfb := exec.Command("Xvfb", display, "-screen", "0", dims, "-ac", "-nolisten", "tcp")
+	xvfb := exec.Command("Xvfb", d.opts.Display, "-screen", "0", dims, "-ac", "-nolisten", "tcp")
 	if err := xvfb.Start(); err != nil {
 		return err
 	}
@@ -61,7 +61,7 @@ func (d *Display) launchXvfb(display string) error {
 	return nil
 }
 
-func (d *Display) launchChrome(url string) error {
+func (d *Display) LaunchChrome(url string) error {
 	log.Println("Launching Chrome...")
 	opts := []chromedp.ExecAllocatorOption{
 		chromedp.ExecPath("chromium"),
