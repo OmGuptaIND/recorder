@@ -28,6 +28,12 @@ make run
 
 Check the server is running by visiting the `http://localhost:3000/`.
 
+```
+Sometimes Pulse Audio just doesn't want to start, so to give it a little push, 
+After you SSH inside the container, run the following command.
+`./pulseaudio.sh`
+```
+
 ### API ENDPOINTS
 
 - `/ping` - To check the server is running.
