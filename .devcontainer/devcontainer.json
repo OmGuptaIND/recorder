@@ -14,7 +14,10 @@
             }
         }
     },
-    "forwardPorts": [4000],
+    "forwardPorts": [
+        4000,
+        3000
+    ],
     "postCreateCommand": "echo 'Ready!'",
     "remoteUser": "root"
 }

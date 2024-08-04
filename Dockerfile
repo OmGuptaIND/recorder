@@ -6,7 +6,7 @@ ARG TARGETPLATFORM
 # Set the working directory
 WORKDIR /workspace
 
-# Install necessary packages
+# Install necessary packages including FFmpeg
 RUN apt-get update && apt-get install -y \
     curl \
     git \
@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     xvfb \
     bash \
+    ffmpeg \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -40,19 +41,35 @@ COPY . .
 # Build the Go app using Go or Make, depending on your setup
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./bin/main cmd/*.go
 
-# Install chromedriver
-RUN apt-get install -y chromium && \
-    CHROMIUM_VERSION=$(chromium --version | grep -oP '\d+\.\d+\.\d+') && \
-    CHROMEDRIVER_VERSION=$(wget -qO- "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROMIUM_VERSION") && \
-    wget -N "http://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip" && \
-    unzip chromedriver_linux64.zip && \
-    chmod +x chromedriver && \
-    mv chromedriver /usr/local/bin/ && \
-    rm chromedriver_linux64.zip
+# Install Chromium and ChromeDriver
+RUN echo "deb http://deb.debian.org/debian bullseye main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian-security/ bullseye-security main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb http://deb.debian.org/debian bullseye-updates main contrib non-free" >> /etc/apt/sources.list && \
+    apt-get update && apt-get install -y chromium chromium-driver
+
+# Find Chromium installation path and update PATH environment
+RUN CHROMIUM_PATH=$(which chromium || which chromium-browser) && \
+    echo "Found chromium at $CHROMIUM_PATH" && \
+    if [ -z "$CHROMIUM_PATH" ]; then echo "Chromium not found in PATH" && exit 1; fi && \
+    PATH=$PATH:$(dirname $CHROMIUM_PATH)
+
+# Verify FFmpeg installation and add to PATH if necessary
+RUN FFMPEG_PATH=$(which ffmpeg) && \
+    echo "Found ffmpeg at $FFMPEG_PATH" && \
+    if [ -z "$FFMPEG_PATH" ]; then echo "FFmpeg not found in PATH" && exit 1; fi && \
+    PATH=$PATH:$(dirname $FFMPEG_PATH)
+
+# Set the updated PATH permanently
+ENV PATH=$PATH
 
 # Clean up
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Verify installations
+RUN chromium --version && \
+    chromedriver --version && \
+    ffmpeg -version
 
 # The container starts with a shell by default; adjust as necessary for your workflow
 CMD ["/bin/bash"]
