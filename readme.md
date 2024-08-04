@@ -22,7 +22,7 @@ docker-compose up
 
 - [ ] Add API server Capabilties to make custom recording calls.
 - [ ] Do proper file system implementation to handle different recordings.
-- [ ] Add Capabilties to do livestreaming onto multiple rtmp, rtmps endpoints ( Hopefully ffmpeg will make life easy )
+- [ ] Add Capabilties to do livestreaming onto multiple rtmp, rtmps endpoints ( Hopefully ffmpeg will make it easy )
 - [ ] Maybe do the kubernetes thing for auto scaling.
 - [ ] Benchmarking, because I know sometimes recordings will fail to record propely, because its life.
 - [ ] Add more documentation.
