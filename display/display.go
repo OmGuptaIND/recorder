@@ -142,7 +142,6 @@ func (d *Display) Close() {
 
 // TakeScreenshot captures a screenshot of the current display.
 func (d *Display) TakeScreenshot() {
-	// capture entire browser viewport, returning png with quality=90
 	var buf []byte
 	if err := chromedp.Run(d.chromeCtx, chromedp.CaptureScreenshot(&buf)); err != nil {
 		log.Fatal(err)
