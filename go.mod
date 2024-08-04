@@ -2,8 +2,6 @@ module github.com/OmGuptaIND
 
 go 1.22.5
 
-require go.uber.org/zap v1.27.0
-
 require (
 	github.com/chromedp/cdproto v0.0.0-20240801214329-3f85d328b335 // indirect
 	github.com/chromedp/sysutil v1.0.0 // indirect
@@ -30,6 +28,5 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.55.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sys v0.22.0 // indirect
 )
