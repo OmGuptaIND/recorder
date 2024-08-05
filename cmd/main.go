@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"log"
 	"sync"
 	"syscall"
 
 	"github.com/OmGuptaIND/api"
-	"github.com/OmGuptaIND/config"
-	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/pkg"
 	store "github.com/OmGuptaIND/store"
 )
@@ -22,20 +19,10 @@ func main() {
 	// Create a new store
 	store.NewStore()
 
-	// Create a new display
-	display := display.NewDisplay(config.DEFAULT_DISPLAY_OPTS)
-
-	if err := display.LaunchXvfb(); err != nil {
-		log.Panicln(err)
-	}
-
-	defer display.Close()
-
 	// Create a new API server
 	apiServer := api.NewApiServer(api.ApiServerOptions{
-		Port:    3000,
-		Ctx:     ctx,
-		Display: display,
+		Port: 3000,
+		Ctx:  ctx,
 	})
 
 	// Start the API server

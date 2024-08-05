@@ -15,7 +15,7 @@ import (
 )
 
 type NewRecorderOptions struct {
-	display.DisplayOptions
+	*display.Display
 }
 
 type Recorder struct {
@@ -23,18 +23,18 @@ type Recorder struct {
 	Ctx         context.Context
 	ffmpeg      *exec.Cmd
 	ffmpegStdin io.WriteCloser
-	opts        NewRecorderOptions
 	wg          *sync.WaitGroup
+	CloseHook   func() error
 
-	CloseHook func() error
+	NewRecorderOptions
 }
 
 func NewRecorder(opts NewRecorderOptions) *Recorder {
 	return &Recorder{
-		ID:   uuid.New().String(),
-		opts: opts,
-		Ctx:  context.Background(),
-		wg:   &sync.WaitGroup{},
+		ID:                 uuid.New().String(),
+		Ctx:                context.Background(),
+		wg:                 &sync.WaitGroup{},
+		NewRecorderOptions: opts,
 	}
 }
 
@@ -45,15 +45,15 @@ func (r *Recorder) RecordingPath() string {
 
 func (r *Recorder) StartRecording() error {
 	log.Println("Starting Recorder process...")
-	videoSize := fmt.Sprintf("%dx%d", r.opts.Width, r.opts.Height)
+	videoSize := fmt.Sprintf("%dx%d", r.GetWidth(), r.GetHeight())
 
 	cmd := exec.Command("ffmpeg",
 		"-loglevel", "trace",
 		"-video_size", videoSize,
 		"-f", "x11grab",
-		"-i", fmt.Sprintf("%s.0", r.opts.Display),
+		"-i", r.GetDisplayId(),
 		"-f", "pulse",
-		"-i", "grab.monitor",
+		"-i", r.GetPulseMonitorId(),
 
 		"-c:v", "libx264",
 		"-vf", "scale=1280:720",
@@ -72,24 +72,24 @@ func (r *Recorder) StartRecording() error {
 		return fmt.Errorf("failed to open stdin pipe: %v", err)
 	}
 
-	// stderr, err := cmd.StderrPipe()
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create stderr pipe: %v", err)
-	// }
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %v", err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start FFmpeg: %v", err)
 	}
 
-	// copyOutput := func(writer io.Writer, reader io.Reader, name string) {
-	// 	_, err := io.Copy(writer, reader)
-	// 	if err != nil && err != io.EOF {
-	// 		log.Printf("Error copying %s: %v", name, err)
-	// 	}
-	// }
+	copyOutput := func(writer io.Writer, reader io.Reader, name string) {
+		_, err := io.Copy(writer, reader)
+		if err != nil && err != io.EOF {
+			log.Printf("Error copying %s: %v", name, err)
+		}
+	}
 
-	// // Start goroutines to copy stdout and stderr
-	// go copyOutput(os.Stderr, stderr, "stderr")
+	// Start goroutines to copy stdout and stderr
+	go copyOutput(os.Stderr, stderr, "stderr")
 
 	r.ffmpeg = cmd
 	r.ffmpegStdin = ioCloser
@@ -104,9 +104,14 @@ func (r *Recorder) StopRecording() error {
 		return nil
 	}
 
-	if r.CloseHook != nil {
-		r.CloseHook()
-	}
+	defer func() {
+		if r.CloseHook != nil {
+			log.Println("Cleaning Up Recorder CloseHook...")
+			if err := r.CloseHook(); err != nil {
+				log.Printf("CloseHook failed: %v", err)
+			}
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(r.Ctx, 10*time.Second)
 	defer cancel()
@@ -134,7 +139,8 @@ func (r *Recorder) StopRecording() error {
 		}
 	case <-ctx.Done():
 		log.Println("FFmpeg didn't exit in time, force killing...")
-		if err := r.ffmpeg.Process.Kill(); err != nil {
+		err := r.ffmpeg.Process.Kill()
+		if err != nil {
 			return fmt.Errorf("failed to kill FFmpeg process: %v", err)
 		}
 	}

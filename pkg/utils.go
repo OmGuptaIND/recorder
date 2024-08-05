@@ -1,9 +1,11 @@
 package pkg
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 // handleSignal listens for signals and closes the badger node when a signal is received.
@@ -17,4 +19,8 @@ func HandleSignal() chan os.Signal {
 	)
 
 	return signalChan
+}
+
+func RandomDisplay() string {
+	return fmt.Sprintf(":%d", (time.Now().Nanosecond()%1000)+os.Getpid()%1000+100)
 }

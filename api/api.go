@@ -18,10 +18,9 @@ import (
 
 // ApiServerOptions defines the configuration options for the ApiServer.
 type ApiServerOptions struct {
-	Port    int
-	Wg      *sync.WaitGroup
-	Ctx     context.Context
-	Display *display.Display
+	Port int
+	Wg   *sync.WaitGroup
+	Ctx  context.Context
 }
 
 // ApiServer represents an HTTP server that provides endpoints to manage media nodes.
@@ -63,34 +62,55 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
 	}
 
-	chromeDisplay, err := a.opts.Display.LaunchChrome(req.Url)
+	display := display.NewDisplay(display.DisplayOptions{
+		Width:  config.DEFAULT_DISPLAY_OPTS.Width,
+		Height: config.DEFAULT_DISPLAY_OPTS.Height,
+		Depth:  config.DEFAULT_DISPLAY_OPTS.Depth,
+	})
 
-	fmt.Println("Launching Chrome Done")
+	defer func() {
+		if err != nil {
+			log.Println("Error Occured Starting Recording, Closing Display")
+			if display != nil {
+				display.Close()
+			}
+		}
+	}()
+
+	err = display.LaunchXvfb()
+	log.Println("Xvfb Launched Done")
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Xvfb")
+	}
+
+	err = display.LaunchPulseSink()
+
+	log.Println("Pulse Sink Launched Done")
+
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Pulse Sink")
+	}
+
+	_, err = display.LaunchChrome(req.Url)
+
+	log.Println("Chrome Launched Done")
 
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Chrome")
 	}
 
-	defer func() {
-		if err != nil {
-			log.Println("Error Occured Starting Recording, Closing Chrome")
-			if chromeDisplay != nil {
-				chromeDisplay.Close()
-			}
-		}
-	}()
-
 	time.Sleep(time.Second * 3)
 
-	rec := recorder.NewRecorder(recorder.NewRecorderOptions{DisplayOptions: config.DEFAULT_DISPLAY_OPTS})
+	rec := recorder.NewRecorder(recorder.NewRecorderOptions{Display: display})
 
 	if err := rec.StartRecording(); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording")
 	}
 
 	rec.CloseHook = func() error {
-		if chromeDisplay != nil {
-			chromeDisplay.Close()
+		if display != nil {
+			display.Close()
 		}
 
 		return nil

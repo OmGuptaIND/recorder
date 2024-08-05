@@ -1,13 +1,15 @@
 package display
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
-	"sync"
+	"strings"
 
+	"github.com/OmGuptaIND/pkg"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
 )
@@ -16,20 +18,19 @@ type DisplayOptions struct {
 	Width  int
 	Height int
 	Depth  int
-
-	Display string `yaml:"-"`
 }
 
 type Display struct {
-	xvfb *exec.Cmd
-	opts DisplayOptions
+	pulseSink string
+	DisplayId string
 
-	mu       sync.RWMutex
-	browsers map[string]*chromeDisplay
+	ID      string
+	xvfb    *exec.Cmd
+	opts    DisplayOptions
+	browser *chromeDisplay
 }
 
 type chromeDisplay struct {
-	id           string
 	chromeCtx    context.Context
 	chromeCancel context.CancelFunc
 
@@ -39,10 +40,36 @@ type chromeDisplay struct {
 // NewDisplay initializes a new Display with the specified options.
 func NewDisplay(opts DisplayOptions) *Display {
 	return &Display{
-		opts:     opts,
-		mu:       sync.RWMutex{},
-		browsers: make(map[string]*chromeDisplay),
+		ID:        uuid.New().String(),
+		DisplayId: pkg.RandomDisplay(),
+		pulseSink: "",
+		opts:      opts,
 	}
+}
+
+func (d *Display) GetDisplayId() string {
+	return d.DisplayId
+}
+
+func (d *Display) GetWidth() int {
+	return d.opts.Width
+}
+
+func (d *Display) GetHeight() int {
+	return d.opts.Height
+}
+
+func (d *Display) GetSink() string {
+	return d.pulseSink
+}
+
+func (d *Display) GetPulseMonitorId() string {
+	return fmt.Sprintf("%s.monitor", d.ID)
+}
+
+// GetDisplayOptions returns the display options.
+func (d *Display) GetDisplayOptions() DisplayOptions {
+	return d.opts
 }
 
 // Launch starts the Xvfb server and Chrome with the specified URL.
@@ -70,7 +97,7 @@ func (d *Display) LaunchXvfb() error {
 	log.Println("Starting Xvfb server...")
 
 	dims := fmt.Sprintf("%dx%dx%d", d.opts.Width, d.opts.Height, d.opts.Depth)
-	xvfb := exec.Command("Xvfb", d.opts.Display, "-screen", "0", dims, "-ac", "-nolisten", "tcp")
+	xvfb := exec.Command("Xvfb", d.DisplayId, "-screen", "0", dims, "-ac", "-nolisten", "tcp")
 	if err := xvfb.Start(); err != nil {
 		return err
 	}
@@ -78,9 +105,44 @@ func (d *Display) LaunchXvfb() error {
 	return nil
 }
 
+// Start a new Pulse Sink
+func (d *Display) LaunchPulseSink() error {
+	if d.pulseSink != "" {
+		log.Println("Pulse Sink is already running")
+		return nil
+	}
+
+	cmd := exec.Command("pactl",
+		"load-module", "module-null-sink",
+		fmt.Sprintf("sink_name=\"%s\"", d.ID),
+		fmt.Sprintf("sink_properties=device.description=\"%s\"", d.ID),
+	)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	d.pulseSink = strings.TrimSpace(stdout.String())
+
+	log.Println("Pulse Sink started", d.pulseSink)
+
+	return nil
+}
+
 // LaunchChrome starts Chrome with the specified URL.
 func (d *Display) LaunchChrome(url string) (*chromeDisplay, error) {
 	log.Println("Launching Chrome...")
+	if d.browser != nil {
+		log.Println("Chrome is already running")
+		return d.browser, nil
+	}
+
+	log.Println("Starting Chrome...", d.DisplayId)
+
 	opts := []chromedp.ExecAllocatorOption{
 		chromedp.ExecPath("chromium"),
 		chromedp.NoFirstRun,
@@ -119,10 +181,11 @@ func (d *Display) LaunchChrome(url string) (*chromeDisplay, error) {
 		chromedp.Flag("autoplay-policy", "no-user-gesture-required"),
 		chromedp.Flag("window-position", "0,0"),
 		chromedp.Flag("window-size", fmt.Sprintf("%d,%d", d.opts.Width, d.opts.Height)),
-		chromedp.Flag("display", d.opts.Display),
+		chromedp.Flag("display", d.DisplayId),
+		chromedp.Env(fmt.Sprintf("PULSE_SINK=%s", d.ID)),
 	}
 
-	allocCtx, _ := chromedp.NewExecAllocator(context.Background(), opts...)
+	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 
 	ctx, cancel := chromedp.NewContext(allocCtx)
 
@@ -135,22 +198,17 @@ func (d *Display) LaunchChrome(url string) (*chromeDisplay, error) {
 	}
 
 	chromeDisplay := &chromeDisplay{
-		id:             uuid.New().String(),
 		chromeCtx:      ctx,
 		chromeCancel:   cancel,
 		DisplayOptions: d.opts,
 	}
 
-	d.mu.Lock()
-	d.browsers[chromeDisplay.id] = chromeDisplay
-	d.mu.Unlock()
+	d.browser = chromeDisplay
 
 	go func() {
 		<-chromeDisplay.chromeCtx.Done()
-		log.Println("Chrome exited")
-		d.mu.Lock()
-		delete(d.browsers, chromeDisplay.id)
-		d.mu.Unlock()
+		log.Println("Chrome context done")
+		cancelAlloc()
 	}()
 
 	return chromeDisplay, nil
@@ -162,28 +220,20 @@ func (c *chromeDisplay) Close() {
 }
 
 // Close stops the Chrome instance for the specified URL.
-func (d *Display) CloseChrome(id string) bool {
+func (d *Display) CloseChrome(id string) {
 	log.Println("Closing Chrome...")
-	d.mu.RLock()
-	defer d.mu.RUnlock()
 
-	if browser, ok := d.browsers[id]; ok {
-		browser.chromeCancel()
-		delete(d.browsers, id)
-		return true
+	if d.browser != nil {
+		d.browser.chromeCancel()
 	}
-
-	return false
 }
 
 // Close stops the Xvfb server and Chrome.
 func (d *Display) Close() {
 	log.Println("Closing display...")
-	d.mu.RLock()
-	defer d.mu.RUnlock()
 
-	for _, browser := range d.browsers {
-		browser.chromeCancel()
+	if d.browser != nil {
+		d.browser.chromeCancel()
 	}
 
 	if d.xvfb != nil {
@@ -193,6 +243,19 @@ func (d *Display) Close() {
 			log.Println("Failed to stop Xvfb server")
 		}
 
+		log.Println("Xvfb server stopped")
+
 		d.xvfb = nil
+	}
+
+	if d.pulseSink != "" {
+		cmd := exec.Command("pactl", "unload-module", d.pulseSink)
+		if err := cmd.Run(); err != nil {
+			log.Printf("Failed to stop Pulse Sink, Sink: %s\n", d.pulseSink)
+		}
+
+		log.Println("Pulse Sink stopped")
+
+		d.pulseSink = ""
 	}
 }

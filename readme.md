@@ -72,3 +72,20 @@ curl --location --request PATCH 'http://localhost:3000/stop-recording' \
 - [ ] Benchmarking, because I know sometimes recordings will fail to record propely, because its life.
 - [ ] Add more documentation.
 - [ ] Add more tests
+
+
+## Scripts
+- To get all the running pulse audio
+```bash
+pactl list short sources
+```
+
+- To Close the pulse audio
+```bash
+pulseaudio -k
+```
+
+- To Close all the Pulse Sink
+```bash
+pactl unload-module module-null-sink
+```
