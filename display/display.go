@@ -6,8 +6,10 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sync"
 
 	"github.com/chromedp/chromedp"
+	"github.com/google/uuid"
 )
 
 type DisplayOptions struct {
@@ -22,8 +24,16 @@ type Display struct {
 	xvfb *exec.Cmd
 	opts DisplayOptions
 
+	mu       sync.RWMutex
+	browsers map[string]*chromeDisplay
+}
+
+type chromeDisplay struct {
+	id           string
 	chromeCtx    context.Context
 	chromeCancel context.CancelFunc
+
+	DisplayOptions
 }
 
 // NewDisplay initializes a new Display with the specified options.
@@ -39,7 +49,7 @@ func (d *Display) Launch(url string) error {
 		return err
 	}
 
-	if err := d.LaunchChrome(url); err != nil {
+	if _, err := d.LaunchChrome(url); err != nil {
 		return err
 	}
 
@@ -50,6 +60,11 @@ func (d *Display) Launch(url string) error {
 
 // Start launches the Xvfb server with the specified display.
 func (d *Display) LaunchXvfb() error {
+	if d.xvfb != nil {
+		log.Println("Xvfb server is already running")
+		return nil
+	}
+
 	log.Println("Starting Xvfb server...")
 
 	dims := fmt.Sprintf("%dx%dx%d", d.opts.Width, d.opts.Height, d.opts.Depth)
@@ -61,7 +76,8 @@ func (d *Display) LaunchXvfb() error {
 	return nil
 }
 
-func (d *Display) LaunchChrome(url string) error {
+// LaunchChrome starts Chrome with the specified URL.
+func (d *Display) LaunchChrome(url string) (*chromeDisplay, error) {
 	log.Println("Launching Chrome...")
 	opts := []chromedp.ExecAllocatorOption{
 		chromedp.ExecPath("chromium"),
@@ -108,25 +124,64 @@ func (d *Display) LaunchChrome(url string) error {
 
 	ctx, cancel := chromedp.NewContext(allocCtx)
 
-	d.chromeCancel = cancel
-	d.chromeCtx = ctx
-
 	err := chromedp.Run(ctx, chromedp.Navigate(url), chromedp.Evaluate(`window.screen.width`, &d.opts.Width),
 		chromedp.Evaluate(`window.screen.height`, &d.opts.Height))
 
 	if err != nil {
 		log.Println(err)
-		return err
+		return nil, err
 	}
 
-	return nil
+	chromeDisplay := &chromeDisplay{
+		id:             uuid.New().String(),
+		chromeCtx:      ctx,
+		chromeCancel:   cancel,
+		DisplayOptions: d.opts,
+	}
+
+	d.mu.Lock()
+	d.browsers[chromeDisplay.id] = chromeDisplay
+	d.mu.Unlock()
+
+	go func() {
+		<-chromeDisplay.chromeCtx.Done()
+		log.Println("Chrome exited")
+		d.mu.Lock()
+		delete(d.browsers, chromeDisplay.id)
+		d.mu.Unlock()
+	}()
+
+	return chromeDisplay, nil
+}
+
+// Close stops the Chrome instance.
+func (c *chromeDisplay) Close() {
+	c.chromeCancel()
+}
+
+// Close stops the Chrome instance for the specified URL.
+func (d *Display) CloseChrome(id string) bool {
+	log.Println("Closing Chrome...")
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	if browser, ok := d.browsers[id]; ok {
+		browser.chromeCancel()
+		delete(d.browsers, id)
+		return true
+	}
+
+	return false
 }
 
 // Close stops the Xvfb server and Chrome.
 func (d *Display) Close() {
 	log.Println("Closing display...")
-	if d.chromeCancel != nil {
-		d.chromeCancel()
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	for _, browser := range d.browsers {
+		browser.chromeCancel()
 	}
 
 	if d.xvfb != nil {
@@ -137,19 +192,5 @@ func (d *Display) Close() {
 		}
 
 		d.xvfb = nil
-	}
-}
-
-// TakeScreenshot captures a screenshot of the current display.
-func (d *Display) TakeScreenshot() {
-	var buf []byte
-	if err := chromedp.Run(d.chromeCtx, chromedp.CaptureScreenshot(&buf)); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("Screenshot captured")
-
-	if err := os.WriteFile("screenshot.png", buf, 0644); err != nil {
-		log.Fatal(err)
 	}
 }

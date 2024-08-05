@@ -6,21 +6,33 @@ import (
 	"github.com/OmGuptaIND/recorder"
 )
 
-// Store represents a store for recordings.
-type Store struct {
+var store *AppStore
+
+type AppStore struct {
 	mu         sync.RWMutex
 	Recordings map[string]*recorder.Recorder
 }
 
+// GetStore retrieves the store.
+func GetStore() *AppStore {
+	return store
+}
+
 // NewStore creates a new store.
-func NewStore() *Store {
-	return &Store{
+func NewStore() *AppStore {
+	if store != nil {
+		return store
+	}
+
+	store = &AppStore{
 		Recordings: make(map[string]*recorder.Recorder),
 	}
+
+	return store
 }
 
 // AddRecording adds a recording to the store.
-func (s *Store) AddRecording(id string, r *recorder.Recorder) {
+func (s *AppStore) AddRecording(id string, r *recorder.Recorder) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -28,7 +40,7 @@ func (s *Store) AddRecording(id string, r *recorder.Recorder) {
 }
 
 // GetRecording retrieves a recording from the store.
-func (s *Store) GetRecording(id string) (*recorder.Recorder, bool) {
+func (s *AppStore) GetRecording(id string) (*recorder.Recorder, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -37,7 +49,7 @@ func (s *Store) GetRecording(id string) (*recorder.Recorder, bool) {
 }
 
 // RemoveRecording removes a recording from the store.
-func (s *Store) RemoveRecording(id string) {
+func (s *AppStore) RemoveRecording(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -45,7 +57,7 @@ func (s *Store) RemoveRecording(id string) {
 }
 
 // ListRecordings lists all recordings in the store.
-func (s *Store) ListRecordings() map[string]recorder.Recorder {
+func (s *AppStore) ListRecordings() map[string]recorder.Recorder {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

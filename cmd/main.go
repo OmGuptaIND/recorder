@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/OmGuptaIND/api"
+	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/pkg"
 	store "github.com/OmGuptaIND/store"
@@ -19,15 +20,10 @@ func main() {
 	defer cancel()
 
 	// Create a new store
-	store := store.NewStore()
+	store.NewStore()
 
 	// Create a new display
-	display := display.NewDisplay(display.DisplayOptions{
-		Width:   1280,
-		Height:  720,
-		Depth:   24,
-		Display: ":99",
-	})
+	display := display.NewDisplay(config.DEFAULT_DISPLAY_OPTS)
 
 	if err := display.LaunchXvfb(); err != nil {
 		log.Panicln(err)
@@ -37,22 +33,18 @@ func main() {
 
 	// Create a new API server
 	apiServer := api.NewApiServer(api.ApiServerOptions{
-		Port:  3000,
-		Ctx:   ctx,
-		Store: store,
+		Port:    3000,
+		Ctx:     ctx,
 		Display: display,
 	})
 
-
-	// Start the API server 
+	// Start the API server
 	wg.Add(1)
 	apiServer.Start()
 	defer func() {
 		apiServer.Close()
 		wg.Done()
 	}()
-
-
 
 	// Handle signals
 	sig := pkg.HandleSignal()

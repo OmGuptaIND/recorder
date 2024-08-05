@@ -8,9 +8,10 @@ import (
 	"net"
 	"sync"
 
+	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/recorder"
-	store "github.com/OmGuptaIND/store"
+	"github.com/OmGuptaIND/store"
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -19,7 +20,6 @@ type ApiServerOptions struct {
 	Port    int
 	Wg      *sync.WaitGroup
 	Ctx     context.Context
-	Store   *store.Store
 	Display *display.Display
 }
 
@@ -56,26 +56,42 @@ func (a *ApiServer) pingHandler(c fiber.Ctx) error {
 func (a *ApiServer) startRecording(c fiber.Ctx) error {
 	var req StartRecordingRequest
 
-	if err := json.Unmarshal(c.Body(), &req); err != nil {
+	err := json.Unmarshal(c.Body(), &req)
+
+	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
 	}
 
-	if err := a.opts.Display.LaunchChrome(req.Url); err != nil {
+	chromeDisplay, err := a.opts.Display.LaunchChrome(req.Url)
+
+	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Chrome")
 	}
 
-	rec := recorder.NewRecorder(recorder.NewRecorderOptions{
-		Width:   1280,
-		Height:  720,
-		Depth:   24,
-		Display: ":99",
-	})
+	defer func() {
+		if err != nil {
+			log.Println("Error Occured Starting Recording, Closing Chrome")
+			if chromeDisplay != nil {
+				chromeDisplay.Close()
+			}
+		}
+	}()
+
+	rec := recorder.NewRecorder(recorder.NewRecorderOptions{DisplayOptions: config.DEFAULT_DISPLAY_OPTS})
 
 	if err := rec.StartRecording(); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording")
 	}
 
-	a.opts.Store.AddRecording(rec.ID, rec)
+	rec.CloseHook = func() error {
+		if chromeDisplay != nil {
+			chromeDisplay.Close()
+		}
+
+		return nil
+	}
+
+	store.GetStore().AddRecording(rec.ID, rec)
 
 	return c.JSON(StartRecordingResponse{
 		Status: "Recording started",
@@ -90,7 +106,7 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
 	}
 
-	rec, ok := a.opts.Store.GetRecording(req.Id)
+	rec, ok := store.GetStore().GetRecording(req.Id)
 
 	if !ok {
 		return fiber.NewError(fiber.StatusNotFound, "Recording not found")
@@ -100,7 +116,7 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to stop recording")
 	}
 
-	a.opts.Store.RemoveRecording(req.Id)
+	store.GetStore().RemoveRecording(req.Id)
 
 	return c.JSON(StopRecordingResponse{
 		Status: "Recording stopped",

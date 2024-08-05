@@ -10,14 +10,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OmGuptaIND/display"
 	"github.com/google/uuid"
 )
 
 type NewRecorderOptions struct {
-	Width   int
-	Height  int
-	Depth   int
-	Display string `yaml:"-"`
+	display.DisplayOptions
 }
 
 type Recorder struct {
@@ -27,6 +25,8 @@ type Recorder struct {
 	ffmpegStdin io.WriteCloser
 	opts        NewRecorderOptions
 	wg          *sync.WaitGroup
+
+	CloseHook func() error
 }
 
 func NewRecorder(opts NewRecorderOptions) *Recorder {
@@ -56,7 +56,7 @@ func (r *Recorder) StartRecording() error {
 		"-f", "pulse",
 		"-i", "grab.monitor",
 
-		"-c:v", "libx264", //
+		"-c:v", "libx264",
 		"-vf", "scale=1280:720",
 		"-preset", "fast",
 		"-crf", "23",
@@ -102,6 +102,10 @@ func (r *Recorder) StopRecording() error {
 	if r.ffmpeg == nil || r.ffmpeg.Process == nil {
 		log.Println("FFmpeg process is not running")
 		return nil
+	}
+
+	if r.CloseHook != nil {
+		r.CloseHook()
 	}
 
 	ctx, cancel := context.WithTimeout(r.Ctx, 10*time.Second)
