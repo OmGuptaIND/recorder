@@ -66,7 +66,8 @@ curl --location --request PATCH 'http://localhost:3000/stop-recording' \
 ## TODO
 
 - [x] Add API server Capabilties to make custom recording calls.
-- [ ] Do proper file system implementation to handle different recordings.
+- [x] Ability to record multiple recordings at the same time. ( Took some time to figure out the pulse audio thing )
+- [x] Do proper file system implementation to handle different recordings.
 - [ ] Add Capabilties to do livestreaming onto multiple rtmp, rtmps endpoints ( Hopefully ffmpeg will make it easy )
 - [ ] Maybe do the kubernetes thing for auto scaling.
 - [ ] Benchmarking, because I know sometimes recordings will fail to record propely, because its life.
