@@ -1,0 +1,18 @@
+services:
+  recorder:
+    image: recorder-dev
+    container_name: recorder
+    volumes:
+      - ./recordings:/workspace/recordings
+    environment:
+      - DISPLAY=:99
+    ports:
+      - "3000:3000"
+      - "4000:4000"
+      - "2222:22"
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+    entrypoint: ["./pulseaudio.sh"]
+    command: ["/usr/sbin/sshd", "-D"]

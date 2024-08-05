@@ -39,7 +39,9 @@ type chromeDisplay struct {
 // NewDisplay initializes a new Display with the specified options.
 func NewDisplay(opts DisplayOptions) *Display {
 	return &Display{
-		opts: opts,
+		opts:     opts,
+		mu:       sync.RWMutex{},
+		browsers: make(map[string]*chromeDisplay),
 	}
 }
 

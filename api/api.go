@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
@@ -64,6 +65,8 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 
 	chromeDisplay, err := a.opts.Display.LaunchChrome(req.Url)
 
+	fmt.Println("Launching Chrome Done")
+
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Chrome")
 	}
@@ -76,6 +79,8 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 			}
 		}
 	}()
+
+	time.Sleep(time.Second * 3)
 
 	rec := recorder.NewRecorder(recorder.NewRecorderOptions{DisplayOptions: config.DEFAULT_DISPLAY_OPTS})
 

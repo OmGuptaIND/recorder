@@ -50,7 +50,6 @@ func (r *Recorder) StartRecording() error {
 	cmd := exec.Command("ffmpeg",
 		"-loglevel", "trace",
 		"-video_size", videoSize,
-		"-framerate", "25",
 		"-f", "x11grab",
 		"-i", fmt.Sprintf("%s.0", r.opts.Display),
 		"-f", "pulse",
@@ -58,11 +57,12 @@ func (r *Recorder) StartRecording() error {
 
 		"-c:v", "libx264",
 		"-vf", "scale=1280:720",
-		"-preset", "fast",
+		"-preset", "veryslow",
 		"-crf", "23",
 		"-pix_fmt", "yuv420p",
 		"-c:a", "aac",
 		"-b:a", "128k",
+		"-async", "1",
 		"-y",
 		r.RecordingPath())
 
@@ -72,24 +72,24 @@ func (r *Recorder) StartRecording() error {
 		return fmt.Errorf("failed to open stdin pipe: %v", err)
 	}
 
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %v", err)
-	}
+	// stderr, err := cmd.StderrPipe()
+	// if err != nil {
+	// 	return fmt.Errorf("failed to create stderr pipe: %v", err)
+	// }
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start FFmpeg: %v", err)
 	}
 
-	copyOutput := func(writer io.Writer, reader io.Reader, name string) {
-		_, err := io.Copy(writer, reader)
-		if err != nil && err != io.EOF {
-			log.Printf("Error copying %s: %v", name, err)
-		}
-	}
+	// copyOutput := func(writer io.Writer, reader io.Reader, name string) {
+	// 	_, err := io.Copy(writer, reader)
+	// 	if err != nil && err != io.EOF {
+	// 		log.Printf("Error copying %s: %v", name, err)
+	// 	}
+	// }
 
-	// Start goroutines to copy stdout and stderr
-	go copyOutput(os.Stderr, stderr, "stderr")
+	// // Start goroutines to copy stdout and stderr
+	// go copyOutput(os.Stderr, stderr, "stderr")
 
 	r.ffmpeg = cmd
 	r.ffmpegStdin = ioCloser
