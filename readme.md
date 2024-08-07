@@ -29,7 +29,7 @@ make run
 Check the server is running by visiting the `http://localhost:3000/`.
 
 ```
-Sometimes Pulse Audio just doesn't want to start, so to give it a little push, 
+Sometimes Pulse Audio just doesn't want to start, so to give it a little push,
 After you SSH inside the container, run the following command.
 `./pulseaudio.sh`
 ```
@@ -49,6 +49,7 @@ curl --location 'http://localhost:3000/start-recording' \
 --header 'Content-Type: application/json' \
 --data '{
     "url": "https://www.youtube.com/watch?v=cii6ruuycQA&ab_channel=OliviaRodrigoVEVO"
+    "stream_url: "rtmp://a.rtmp.youtube.com/live2/<stream_key>"
 }'
 ```
 
@@ -74,19 +75,22 @@ curl --location --request PATCH 'http://localhost:3000/stop-recording' \
 - [ ] Add more documentation.
 - [ ] Add more tests
 
-
 ## Scripts
+
 - To get all the running pulse audio
+
 ```bash
 pactl list short sources
 ```
 
 - To Close the pulse audio
+
 ```bash
 pulseaudio -k
 ```
 
 - To Close all the Pulse Sink
+
 ```bash
 pactl unload-module module-null-sink
 ```
