@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	"github.com/OmGuptaIND/api"
+	"github.com/OmGuptaIND/env"
 	"github.com/OmGuptaIND/pkg"
 	store "github.com/OmGuptaIND/store"
 )
@@ -13,6 +14,8 @@ import (
 var wg sync.WaitGroup
 
 func main() {
+	env.LoadEnvironmentVariables()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

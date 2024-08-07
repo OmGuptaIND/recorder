@@ -3,7 +3,8 @@ package api
 import "github.com/OmGuptaIND/recorder"
 
 type StartRecordingRequest struct {
-	Url string `json:"url"`
+	Url       string `json:"url"`
+	StreamUrl string `json:"stream_url"`
 }
 
 type StartRecordingResponse struct {

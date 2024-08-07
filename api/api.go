@@ -102,7 +102,7 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 
 	time.Sleep(time.Second * 3)
 
-	rec := recorder.NewRecorder(recorder.NewRecorderOptions{Display: display})
+	rec := recorder.NewRecorder(recorder.NewRecorderOptions{Display: display, StreamUrl: req.StreamUrl, FfmpegLogs: false})
 
 	if err := rec.StartRecording(); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording")
@@ -116,6 +116,12 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 		return nil
 	}
 
+	if req.StreamUrl != "" {
+		if err := rec.StartStream(); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Failed to start stream")
+		}
+	}
+
 	store.GetStore().AddRecording(rec.ID, rec)
 
 	return c.JSON(StartRecordingResponse{
@@ -125,6 +131,7 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 }
 
 func (a *ApiServer) stopRecording(c fiber.Ctx) error {
+	log.Println("Stoppping Stream Called")
 	var req StopRecordingRequest
 
 	if err := json.Unmarshal(c.Body(), &req); err != nil {
@@ -137,7 +144,8 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "Recording not found")
 	}
 
-	if err := rec.StopRecording(); err != nil {
+	if err := rec.Close(); err != nil {
+		log.Println("Error Occured Stopping Recording", err)
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to stop recording")
 	}
 
