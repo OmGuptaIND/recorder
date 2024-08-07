@@ -1,4 +1,4 @@
-# Recorder System using Xvfb, ffmpeg, and PulseAudio.
+# Livestreaming / Recording using Xvfb, ffmpeg, and PulseAudio.
 
 System works very simply, it uses Xvfb to create a virtual display, PulseAudio to create a virtual audio device, and ffmpeg to record the screen and audio. Setups chromedp for the browser automation to record any browser url.
 
