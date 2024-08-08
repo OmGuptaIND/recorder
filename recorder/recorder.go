@@ -24,13 +24,11 @@ type Recorder struct {
 	ID  string
 	Ctx context.Context
 
-	recordMutex  *sync.Mutex
-	recordCmd    *exec.Cmd
-	recordCmdStd io.WriteCloser
+	recordMutex *sync.Mutex
+	recordCmd   *exec.Cmd
 
-	streamMutex  *sync.Mutex
-	streamCmd    *exec.Cmd
-	streamCmdStd io.WriteCloser
+	streamMutex *sync.Mutex
+	streamCmd   *exec.Cmd
 
 	wg        *sync.WaitGroup
 	CloseHook func() error
@@ -82,12 +80,6 @@ func (r *Recorder) StartRecording() error {
 		"-y",
 		r.RecordingPath())
 
-	ioCloser, err := cmd.StdinPipe()
-
-	if err != nil {
-		return fmt.Errorf("failed to open stdin pipe: %v", err)
-	}
-
 	if r.FfmpegLogs {
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
@@ -109,7 +101,6 @@ func (r *Recorder) StartRecording() error {
 	}
 
 	r.recordCmd = cmd
-	r.recordCmdStd = ioCloser
 
 	log.Println("Recorder process started successfully")
 
@@ -179,12 +170,6 @@ func (r *Recorder) StartStream() error {
 		r.StreamUrl,
 	)
 
-	ioCloser, err := cmd.StdinPipe()
-	if err != nil {
-		log.Printf("Failed to open stdin pipe: %v", err)
-		return err
-	}
-
 	if r.FfmpegLogs {
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
@@ -207,7 +192,6 @@ func (r *Recorder) StartStream() error {
 	}
 
 	r.streamCmd = cmd
-	r.streamCmdStd = ioCloser
 
 	log.Println("Stream process started successfully")
 
