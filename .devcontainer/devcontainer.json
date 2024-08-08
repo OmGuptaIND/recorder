@@ -19,6 +19,6 @@
         4000,
         3000
     ],
-    "postCreateCommand": "echo 'Ready!'",
+    "postCreateCommand": "./pulseaudio.sh",
     "remoteUser": "root"
 }
