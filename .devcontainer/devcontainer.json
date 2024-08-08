@@ -1,8 +1,6 @@
 {
     "name": "Golang",
-    "build": {
-        "dockerfile": "../Dockerfile"
-    },
+    "image": "recorder-dev",
     "workspaceFolder": "/app",
     "mounts": [
         "source=${localWorkspaceFolder},target=/app,type=bind,consistency=cached"
@@ -11,7 +9,10 @@
         "vscode": {
             "settings": {
                 "terminal.integrated.shell.linux": "/bin/bash"
-            }
+            },
+            "extensions": [
+                "golang.go"
+            ]
         }
     },
     "forwardPorts": [
