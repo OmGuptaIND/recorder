@@ -2,49 +2,48 @@ package recorder
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/OmGuptaIND/display"
-	"github.com/google/uuid"
 )
 
 type NewRecorderOptions struct {
-	FfmpegLogs bool
-	StreamUrl  string
+	ID             string
+	ShowFfmpegLogs bool
+	Ctx            context.Context
+	Wg             *sync.WaitGroup
 	*display.Display
 }
 
 type Recorder struct {
-	ID  string
-	Ctx context.Context
+	mtx       *sync.Mutex
+	recordCmd *exec.Cmd
 
-	recordMutex *sync.Mutex
-	recordCmd   *exec.Cmd
-
-	streamMutex *sync.Mutex
-	streamCmd   *exec.Cmd
-
-	wg        *sync.WaitGroup
 	CloseHook func() error
 
-	NewRecorderOptions
+	done   chan bool
+	Closed bool
+
+	*NewRecorderOptions
 }
 
 func NewRecorder(opts NewRecorderOptions) *Recorder {
 	return &Recorder{
-		ID:                 uuid.New().String(),
-		Ctx:                context.Background(),
-		wg:                 &sync.WaitGroup{},
-		recordMutex:        &sync.Mutex{},
-		streamMutex:        &sync.Mutex{},
-		NewRecorderOptions: opts,
+		mtx:                &sync.Mutex{},
+		done:               make(chan bool, 1),
+		NewRecorderOptions: &opts,
 	}
+}
+
+// Done returns a channel that will be closed when the recording is done.
+func (r *Recorder) Done() <-chan bool {
+	return r.done
 }
 
 // RecordingPath returns the path where the recording will be saved.
@@ -53,8 +52,8 @@ func (r *Recorder) RecordingPath() string {
 }
 
 func (r *Recorder) StartRecording() error {
-	r.recordMutex.Lock()
-	defer r.recordMutex.Unlock()
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
 	if r.recordCmd != nil {
 		return fmt.Errorf("recording already in progress")
@@ -64,6 +63,7 @@ func (r *Recorder) StartRecording() error {
 	videoSize := fmt.Sprintf("%dx%d", r.GetWidth(), r.GetHeight())
 
 	cmd := exec.Command("ffmpeg",
+		"-nostdin",
 		"-loglevel", "trace",
 		"-video_size", videoSize,
 		"-f", "x11grab",
@@ -80,7 +80,7 @@ func (r *Recorder) StartRecording() error {
 		"-y",
 		r.RecordingPath())
 
-	if r.FfmpegLogs {
+	if r.ShowFfmpegLogs {
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			log.Printf("Failed to create stderr pipe: %v", err)
@@ -104,22 +104,26 @@ func (r *Recorder) StartRecording() error {
 
 	log.Println("Recorder process started successfully")
 
+	r.Wg.Add(1)
+	go r.HandleContextCancel()
+
 	return nil
 }
 
-// StopRecording sends an interrupt signal to the recording process and waits for it to finish.
-func (r *Recorder) StopRecording() error {
+// Close sends an interrupt signal to the recording process and waits for it to finish.
+func (r *Recorder) Close() error {
 	if r.recordCmd == nil {
 		log.Println("Recording process is not running")
 		return nil
 	}
 
-	r.recordMutex.Lock()
-	defer r.recordMutex.Unlock()
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
 	log.Println("Stopping Recorder process...")
+
 	if r.recordCmd == nil || r.recordCmd.Process == nil {
-		log.Println("FFmpeg process is not running")
+		log.Println("Recording FFmpeg process is not running")
 		return nil
 	}
 
@@ -136,103 +140,36 @@ func (r *Recorder) StopRecording() error {
 		return fmt.Errorf("failed to send interrupt signal: %v", err)
 	}
 
-	log.Println("Recorder process stopped successfully")
-	return nil
-}
+	done := make(chan error, 1)
+	timeout := time.After(20 * time.Second)
 
-// StartStream starts a new FFmpeg process to stream the display and audio.
-func (r *Recorder) StartStream() error {
-	r.streamMutex.Lock()
-	defer r.streamMutex.Unlock()
+	r.Wg.Add(1)
+	go func() {
+		defer r.Wg.Done()
+		done <- r.recordCmd.Wait()
+	}()
 
-	if r.streamCmd != nil {
-		log.Println("Stream already in progress")
-		return errors.New("stream already in progress")
-	}
-
-	log.Println("Starting Stream process...")
-
-	cmd := exec.Command("ffmpeg",
-		"-loglevel", "trace",
-		"-f", "x11grab",
-		"-video_size", "1280x720",
-		"-i", r.GetDisplayId(),
-		"-f", "pulse",
-		"-i", r.GetPulseMonitorId(),
-		"-c:v", "libx264", "-preset", "veryslow", "-maxrate", "4500k", "-bufsize", "9000k",
-		"-g", "60", "-keyint_min", "60",
-		"-c:a", "aac", "-b:a", "160k", "-ar", "44100",
-		"-flvflags", "no_duration_filesize",
-		"-fflags", "nobuffer",
-		"-f", "flv",
-		"-rtmp_live", "live",
-		"-rtmp_buffer", "3000",
-		r.StreamUrl,
-	)
-
-	if r.FfmpegLogs {
-		stderr, err := cmd.StderrPipe()
+	select {
+	case err := <-done:
 		if err != nil {
-			log.Printf("Failed to create stderr pipe: %v", err)
-			return err
-		}
-
-		copyOutput := func(writer io.Writer, reader io.Reader, name string) {
-			_, err := io.Copy(writer, reader)
-			if err != nil && err != io.EOF {
-				log.Printf("Error copying %s: %v", name, err)
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				if exitErr.ExitCode() != 255 {
+					log.Printf("FFmpeg process exited with status: %d", exitErr.ExitCode())
+				}
 			}
 		}
-		go copyOutput(os.Stderr, stderr, "stderr")
+	case <-timeout:
+		log.Println("Recording process did not stop in time, killing it")
+		if err := r.recordCmd.Process.Kill(); err != nil {
+			log.Printf("Failed to kill Recording process: %v", err)
+		}
 	}
 
-	if err := cmd.Start(); err != nil {
-		log.Printf("Failed to start FFmpeg: %v", err)
-		return err
-	}
+	log.Println("Recording process stopped")
 
-	r.streamCmd = cmd
-
-	log.Println("Stream process started successfully")
-
-	return nil
-}
-
-// StopStream sends an interrupt signal to the stream process and waits for it to finish.
-func (r *Recorder) StopStream() error {
-	if r.streamCmd == nil {
-		log.Println("Stream process is not running")
-		return nil
-	}
-
-	r.streamMutex.Lock()
-	defer r.streamMutex.Unlock()
-	log.Println("Stopping Stream process...")
-
-	if r.streamCmd == nil || r.streamCmd.Process == nil {
-		log.Println("FFmpeg process is not running")
-		return nil
-	}
-
-	if err := r.streamCmd.Process.Signal(os.Interrupt); err != nil {
-		return fmt.Errorf("failed to send interrupt signal: %v", err)
-	}
-
-	log.Println("Stream process stopped successfully")
-	return nil
-}
-
-// Close stops the recording and stream processes and waits for them to finish.
-func (r *Recorder) Close() error {
-	if err := r.StopRecording(); err != nil {
-		return err
-	}
-
-	if err := r.StopStream(); err != nil {
-		return err
-	}
-
-	r.wg.Wait()
+	r.Closed = true
+	r.recordCmd = nil
+	close(r.done)
 
 	return nil
 }
@@ -253,4 +190,12 @@ func (r *Recorder) VerifyOutputFile() error {
 	}
 
 	return nil
+}
+
+// HandleContextCancel handles the context cancel signal.
+func (r *Recorder) HandleContextCancel() {
+	defer r.Wg.Done()
+	<-r.Ctx.Done()
+	log.Println("Context Done, Stopping Recorder")
+	r.Close()
 }

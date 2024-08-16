@@ -7,11 +7,8 @@ import (
 	"log"
 	"net"
 	"sync"
-	"time"
 
-	"github.com/OmGuptaIND/config"
-	"github.com/OmGuptaIND/display"
-	"github.com/OmGuptaIND/recorder"
+	"github.com/OmGuptaIND/pipeline"
 	"github.com/OmGuptaIND/store"
 	"github.com/gofiber/fiber/v3"
 )
@@ -27,6 +24,7 @@ type ApiServerOptions struct {
 type ApiServer struct {
 	app  *fiber.App
 	opts ApiServerOptions
+	done chan bool
 }
 
 // NewApiServer initializes a new API server with the specified options.
@@ -38,6 +36,7 @@ func NewApiServer(opts ApiServerOptions) *ApiServer {
 	apiServer := &ApiServer{
 		app:  app,
 		opts: opts,
+		done: make(chan bool, 1),
 	}
 
 	app.Get("/ping", apiServer.pingHandler)
@@ -46,6 +45,11 @@ func NewApiServer(opts ApiServerOptions) *ApiServer {
 	app.Use(apiServer.notFoundHandler)
 
 	return apiServer
+}
+
+// Done returns a channel that will be closed when the server is done.
+func (a *ApiServer) Done() <-chan bool {
+	return a.done
 }
 
 // `helloHandler` responds with a simple greeting.
@@ -62,71 +66,20 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
 	}
 
-	display := display.NewDisplay(display.DisplayOptions{
-		Width:  config.DEFAULT_DISPLAY_OPTS.Width,
-		Height: config.DEFAULT_DISPLAY_OPTS.Height,
-		Depth:  config.DEFAULT_DISPLAY_OPTS.Depth,
+	p, err := pipeline.NewPipeline(pipeline.NewPipelineOptions{
+		PageUrl:   req.Url,
+		StreamUrl: req.StreamUrl,
 	})
 
-	defer func() {
-		if err != nil {
-			log.Println("Error Occured Starting Recording, Closing Display")
-			if display != nil {
-				display.Close()
-			}
-		}
-	}()
-
-	err = display.LaunchXvfb()
-	log.Println("Xvfb Launched Done")
-
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Xvfb")
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording pipeline")
 	}
 
-	err = display.LaunchPulseSink()
-
-	log.Println("Pulse Sink Launched Done")
-
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Pulse Sink")
-	}
-
-	_, err = display.LaunchChrome(req.Url)
-
-	log.Println("Chrome Launched Done")
-
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to launch Chrome")
-	}
-
-	time.Sleep(time.Second * 3)
-
-	rec := recorder.NewRecorder(recorder.NewRecorderOptions{Display: display, StreamUrl: req.StreamUrl, FfmpegLogs: false})
-
-	if err := rec.StartRecording(); err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording")
-	}
-
-	rec.CloseHook = func() error {
-		if display != nil {
-			display.Close()
-		}
-
-		return nil
-	}
-
-	if req.StreamUrl != "" {
-		if err := rec.StartStream(); err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, "Failed to start stream")
-		}
-	}
-
-	store.GetStore().AddRecording(rec.ID, rec)
+	store.GetStore().AddPipeLine(p.ID, p)
 
 	return c.JSON(StartRecordingResponse{
-		Status: "Recording started",
-		Id:     rec.ID,
+		Status: "Recording Pipeline started",
+		Id:     p.ID,
 	})
 }
 
@@ -138,18 +91,18 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
 	}
 
-	rec, ok := store.GetStore().GetRecording(req.Id)
+	p, ok := store.GetStore().GetPipeline(req.Id)
 
 	if !ok {
-		return fiber.NewError(fiber.StatusNotFound, "Recording not found")
+		return fiber.NewError(fiber.StatusNotFound, "Pipeline not found")
 	}
 
-	if err := rec.Close(); err != nil {
-		log.Println("Error Occured Stopping Recording", err)
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to stop recording")
+	if err := p.Stop(); err != nil {
+		log.Println("Error Occured Stopping Pipeline", err)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to stop recording pipeline")
 	}
 
-	store.GetStore().RemoveRecording(req.Id)
+	store.GetStore().RemovePipeline(p.ID)
 
 	return c.JSON(StopRecordingResponse{
 		Status: "Recording stopped",
@@ -186,9 +139,11 @@ func (a *ApiServer) Start() <-chan struct{} {
 			GracefulContext:       a.opts.Ctx,
 			OnShutdownError: func(err error) {
 				log.Printf("error shutting down the server: %v\n", err)
+				close(a.done)
 			},
 			OnShutdownSuccess: func() {
 				log.Println("server shutdown successfully")
+				close(a.done)
 			},
 			ListenerAddrFunc: func(net.Addr) {
 				log.Printf("apiServer listening on :%d \n", a.opts.Port)

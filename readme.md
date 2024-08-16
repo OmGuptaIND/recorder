@@ -94,3 +94,8 @@ pulseaudio -k
 ```bash
 pactl unload-module module-null-sink
 ```
+- To Read all the running Process
+```bash
+ps aux
+```
+very useful to check for memory leaks, and zombie processes.

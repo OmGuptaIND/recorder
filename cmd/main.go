@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"sync"
+	"os/signal"
 	"syscall"
 
 	"github.com/OmGuptaIND/api"
@@ -10,8 +10,6 @@ import (
 	"github.com/OmGuptaIND/pkg"
 	store "github.com/OmGuptaIND/store"
 )
-
-var wg sync.WaitGroup
 
 func main() {
 	env.LoadEnvironmentVariables()
@@ -28,13 +26,7 @@ func main() {
 		Ctx:  ctx,
 	})
 
-	// Start the API server
-	wg.Add(1)
 	apiServer.Start()
-	defer func() {
-		apiServer.Close()
-		wg.Done()
-	}()
 
 	// Handle signals
 	sig := pkg.HandleSignal()
@@ -43,11 +35,11 @@ func main() {
 		for val := range sig {
 			if val == syscall.SIGINT || val == syscall.SIGTERM {
 				cancel()
-				close(sig)
+				signal.Stop(sig)
 				return
 			}
 		}
 	}()
 
-	wg.Wait()
+	<-apiServer.Done()
 }

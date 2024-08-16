@@ -8,13 +8,16 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"github.com/OmGuptaIND/pkg"
 	"github.com/chromedp/chromedp"
-	"github.com/google/uuid"
 )
 
 type DisplayOptions struct {
+	ID string
+	Wg *sync.WaitGroup
+
 	Width  int
 	Height int
 	Depth  int
@@ -24,26 +27,23 @@ type Display struct {
 	pulseSink string
 	DisplayId string
 
-	ID      string
 	xvfb    *exec.Cmd
-	opts    DisplayOptions
 	browser *chromeDisplay
+
+	*DisplayOptions
 }
 
 type chromeDisplay struct {
 	chromeCtx    context.Context
 	chromeCancel context.CancelFunc
-
-	DisplayOptions
 }
 
 // NewDisplay initializes a new Display with the specified options.
 func NewDisplay(opts DisplayOptions) *Display {
 	return &Display{
-		ID:        uuid.New().String(),
-		DisplayId: pkg.RandomDisplay(),
-		pulseSink: "",
-		opts:      opts,
+		DisplayId:      pkg.RandomDisplay(),
+		pulseSink:      "",
+		DisplayOptions: &opts,
 	}
 }
 
@@ -52,11 +52,11 @@ func (d *Display) GetDisplayId() string {
 }
 
 func (d *Display) GetWidth() int {
-	return d.opts.Width
+	return d.Width
 }
 
 func (d *Display) GetHeight() int {
-	return d.opts.Height
+	return d.Height
 }
 
 func (d *Display) GetSink() string {
@@ -65,11 +65,6 @@ func (d *Display) GetSink() string {
 
 func (d *Display) GetPulseMonitorId() string {
 	return fmt.Sprintf("%s.monitor", d.ID)
-}
-
-// GetDisplayOptions returns the display options.
-func (d *Display) GetDisplayOptions() DisplayOptions {
-	return d.opts
 }
 
 // Launch starts the Xvfb server and Chrome with the specified URL.
@@ -96,12 +91,15 @@ func (d *Display) LaunchXvfb() error {
 
 	log.Println("Starting Xvfb server...")
 
-	dims := fmt.Sprintf("%dx%dx%d", d.opts.Width, d.opts.Height, d.opts.Depth)
+	dims := fmt.Sprintf("%dx%dx%d", d.Width, d.Height, d.Depth)
 	xvfb := exec.Command("Xvfb", d.DisplayId, "-screen", "0", dims, "-ac", "-nolisten", "tcp")
 	if err := xvfb.Start(); err != nil {
 		return err
 	}
 	d.xvfb = xvfb
+
+	log.Println("Xvfb server started")
+
 	return nil
 }
 
@@ -111,6 +109,8 @@ func (d *Display) LaunchPulseSink() error {
 		log.Println("Pulse Sink is already running")
 		return nil
 	}
+
+	log.Println("Starting Pulse Sink...", d.ID)
 
 	cmd := exec.Command("pactl",
 		"load-module", "module-null-sink",
@@ -123,6 +123,7 @@ func (d *Display) LaunchPulseSink() error {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		log.Println("Failed to start Pulse Sink", err)
 		return err
 	}
 
@@ -180,7 +181,7 @@ func (d *Display) LaunchChrome(url string) (*chromeDisplay, error) {
 		chromedp.Flag("enable-automation", false),
 		chromedp.Flag("autoplay-policy", "no-user-gesture-required"),
 		chromedp.Flag("window-position", "0,0"),
-		chromedp.Flag("window-size", fmt.Sprintf("%d,%d", d.opts.Width, d.opts.Height)),
+		chromedp.Flag("window-size", fmt.Sprintf("%d,%d", d.Width, d.Height)),
 		chromedp.Flag("display", d.DisplayId),
 		chromedp.Env(fmt.Sprintf("PULSE_SINK=%s", d.ID)),
 	}
@@ -189,18 +190,17 @@ func (d *Display) LaunchChrome(url string) (*chromeDisplay, error) {
 
 	ctx, cancel := chromedp.NewContext(allocCtx)
 
-	err := chromedp.Run(ctx, chromedp.Navigate(url), chromedp.Evaluate(`window.screen.width`, &d.opts.Width),
-		chromedp.Evaluate(`window.screen.height`, &d.opts.Height))
+	err := chromedp.Run(ctx, chromedp.Navigate(url), chromedp.Evaluate(`window.screen.width`, &d.Width),
+		chromedp.Evaluate(`window.screen.height`, &d.Height))
 
 	if err != nil {
-		log.Println(err)
+		log.Println("Failed to start Chrome", err)
 		return nil, err
 	}
 
 	chromeDisplay := &chromeDisplay{
-		chromeCtx:      ctx,
-		chromeCancel:   cancel,
-		DisplayOptions: d.opts,
+		chromeCtx:    ctx,
+		chromeCancel: cancel,
 	}
 
 	d.browser = chromeDisplay
@@ -210,6 +210,8 @@ func (d *Display) LaunchChrome(url string) (*chromeDisplay, error) {
 		log.Println("Chrome context done")
 		cancelAlloc()
 	}()
+
+	log.Println("Chrome Launched")
 
 	return chromeDisplay, nil
 }
@@ -243,7 +245,13 @@ func (d *Display) Close() {
 			log.Println("Failed to stop Xvfb server")
 		}
 
-		log.Println("Xvfb server stopped")
+		err = d.xvfb.Wait()
+
+		if err != nil {
+			log.Println("Xvfb server exited with error", err)
+		} else {
+			log.Println("Xvfb server stopped")
+		}
 
 		d.xvfb = nil
 	}

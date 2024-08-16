@@ -3,14 +3,14 @@ package store
 import (
 	"sync"
 
-	"github.com/OmGuptaIND/recorder"
+	"github.com/OmGuptaIND/pipeline"
 )
 
 var store *AppStore
 
 type AppStore struct {
-	mu         sync.RWMutex
-	Recordings map[string]*recorder.Recorder
+	mu        sync.RWMutex
+	Pipelines map[string]*pipeline.Pipeline
 }
 
 // GetStore retrieves the store.
@@ -25,46 +25,46 @@ func NewStore() *AppStore {
 	}
 
 	store = &AppStore{
-		Recordings: make(map[string]*recorder.Recorder),
+		Pipelines: make(map[string]*pipeline.Pipeline),
 	}
 
 	return store
 }
 
-// AddRecording adds a recording to the store.
-func (s *AppStore) AddRecording(id string, r *recorder.Recorder) {
+// AddPipeLine adds a recording to the store.
+func (s *AppStore) AddPipeLine(id string, p *pipeline.Pipeline) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.Recordings[id] = r
+	s.Pipelines[id] = p
 }
 
-// GetRecording retrieves a recording from the store.
-func (s *AppStore) GetRecording(id string) (*recorder.Recorder, bool) {
+// GetPipeline retrieves a recording from the store.
+func (s *AppStore) GetPipeline(id string) (*pipeline.Pipeline, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	r, ok := s.Recordings[id]
+	r, ok := s.Pipelines[id]
 	return r, ok
 }
 
-// RemoveRecording removes a recording from the store.
-func (s *AppStore) RemoveRecording(id string) {
+// RemovePipeline removes a recording from the store.
+func (s *AppStore) RemovePipeline(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.Recordings, id)
+	delete(s.Pipelines, id)
 }
 
-// ListRecordings lists all recordings in the store.
-func (s *AppStore) ListRecordings() map[string]recorder.Recorder {
+// ListPipelines lists all recordings in the store.
+func (s *AppStore) ListPipelines() map[string]*pipeline.Pipeline {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	recordings := make(map[string]recorder.Recorder, len(s.Recordings))
-	for k, v := range s.Recordings {
-		recordings[k] = *v
+	pipelines := make(map[string]*pipeline.Pipeline, len(s.Pipelines))
+	for k, v := range s.Pipelines {
+		pipelines[k] = v
 	}
 
-	return recordings
+	return pipelines
 }
