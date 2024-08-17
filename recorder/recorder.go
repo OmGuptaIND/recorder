@@ -42,6 +42,7 @@ type Recorder struct {
 
 const RECORDING_DIR = "recordings"
 
+// NewRecorder creates a new Recorder instance.
 func NewRecorder(opts NewRecorderOptions) *Recorder {
 	RECORDING_FOLDER_PATH := fmt.Sprintf("./%s/%s", RECORDING_DIR, opts.ID)
 
@@ -76,6 +77,7 @@ func (r *Recorder) recordingChunkPath() string {
 	return filepath.Join(r.recordingFolderPath, "chunk_%03d_%Y-%m-%d_%H-%M-%S.mp4")
 }
 
+// StartRecording starts the recording process.
 func (r *Recorder) StartRecording() error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
