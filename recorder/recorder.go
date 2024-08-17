@@ -22,8 +22,9 @@ type NewRecorderOptions struct {
 }
 
 type Recorder struct {
-	mtx       *sync.Mutex
-	recordCmd *exec.Cmd
+	mtx           *sync.Mutex
+	recordCmd     *exec.Cmd
+	recordingPath string
 
 	CloseHook func() error
 
@@ -33,10 +34,23 @@ type Recorder struct {
 	*NewRecorderOptions
 }
 
+const RECORDING_DIR = "./recordings"
+
 func NewRecorder(opts NewRecorderOptions) *Recorder {
+	RECORDING_PATH := fmt.Sprintf("./%s/%s", RECORDING_DIR, opts.ID)
+
+	if _, err := os.Stat(RECORDING_PATH); os.IsNotExist(err) {
+		if err := os.MkdirAll(RECORDING_PATH, 0755); err != nil {
+			log.Printf("Failed to create recording directory, %v", err)
+		}
+
+		log.Printf("Recording directory created at %s", RECORDING_PATH)
+	}
+
 	return &Recorder{
 		mtx:                &sync.Mutex{},
 		done:               make(chan bool, 1),
+		recordingPath:      RECORDING_PATH,
 		NewRecorderOptions: &opts,
 	}
 }
@@ -48,7 +62,7 @@ func (r *Recorder) Done() <-chan bool {
 
 // RecordingPath returns the path where the recording will be saved.
 func (r *Recorder) RecordingPath() string {
-	return fmt.Sprintf("./out/%s.mp4", r.ID)
+	return fmt.Sprintf("./%s/%s.mp4", r.recordingPath, r.ID)
 }
 
 func (r *Recorder) StartRecording() error {
