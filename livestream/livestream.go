@@ -63,6 +63,9 @@ func (l *Livestream) StartStream() error {
 
 	log.Println("Staring Live Streaming")
 
+	l.Wg.Add(1)
+	go l.HandleContextCancel()
+
 	cmd := exec.Command("ffmpeg",
 		"-nostdin",
 		"-loglevel", "trace",
@@ -107,9 +110,6 @@ func (l *Livestream) StartStream() error {
 
 	log.Println("Stream process started successfully")
 
-	l.Wg.Add(1)
-	go l.HandleContextCancel()
-
 	return nil
 }
 
@@ -143,7 +143,7 @@ func (l *Livestream) Close() error {
 	}
 
 	done := make(chan error, 1)
-	timeout := time.After(20 * time.Second)
+	timeout := time.After(10 * time.Second)
 
 	l.Wg.Add(1)
 	go func() {
@@ -155,7 +155,7 @@ func (l *Livestream) Close() error {
 	case err := <-done:
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
-				if exitErr.ExitCode() != 255 {
+				if exitErr.ExitCode() != 255 || exitErr.ExitCode() != -1 {
 					log.Printf("FFmpeg process exited with status: %d", exitErr.ExitCode())
 				}
 			}

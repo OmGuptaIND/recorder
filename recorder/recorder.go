@@ -60,6 +60,9 @@ func (r *Recorder) StartRecording() error {
 	}
 
 	log.Println("Starting Recorder process...")
+	r.Wg.Add(1)
+	go r.HandleContextCancel()
+
 	videoSize := fmt.Sprintf("%dx%d", r.GetWidth(), r.GetHeight())
 
 	cmd := exec.Command("ffmpeg",
@@ -104,9 +107,6 @@ func (r *Recorder) StartRecording() error {
 
 	log.Println("Recorder process started successfully")
 
-	r.Wg.Add(1)
-	go r.HandleContextCancel()
-
 	return nil
 }
 
@@ -141,7 +141,7 @@ func (r *Recorder) Close() error {
 	}
 
 	done := make(chan error, 1)
-	timeout := time.After(20 * time.Second)
+	timeout := time.After(10 * time.Second)
 
 	r.Wg.Add(1)
 	go func() {
@@ -153,7 +153,7 @@ func (r *Recorder) Close() error {
 	case err := <-done:
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
-				if exitErr.ExitCode() != 255 {
+				if exitErr.ExitCode() != 255 || exitErr.ExitCode() != -1 {
 					log.Printf("FFmpeg process exited with status: %d", exitErr.ExitCode())
 				}
 			}

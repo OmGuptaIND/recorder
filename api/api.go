@@ -75,6 +75,11 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording pipeline")
 	}
 
+	if err := p.Start(); err != nil {
+		log.Println("Error Occured Starting Pipeline", err)
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording pipeline")
+	}
+
 	store.GetStore().AddPipeLine(p.ID, p)
 
 	return c.JSON(StartRecordingResponse{

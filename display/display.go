@@ -238,6 +238,16 @@ func (d *Display) Close() {
 		d.browser.chromeCancel()
 	}
 
+	d.Wg.Add(2)
+	go d.CloseXvfb()
+	go d.ClosePulseSink()
+}
+
+// CloseXvfb stops the Xvfb server.
+func (d *Display) CloseXvfb() {
+	defer d.Wg.Done()
+	log.Println("Closing Xvfb server...")
+
 	if d.xvfb != nil {
 		err := d.xvfb.Process.Signal(os.Interrupt)
 
@@ -255,6 +265,12 @@ func (d *Display) Close() {
 
 		d.xvfb = nil
 	}
+}
+
+// ClosePulseSink stops the Pulse Sink.
+func (d *Display) ClosePulseSink() {
+	defer d.Wg.Done()
+	log.Println("Closing Pulse Sink...")
 
 	if d.pulseSink != "" {
 		cmd := exec.Command("pactl", "unload-module", d.pulseSink)

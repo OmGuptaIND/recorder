@@ -24,8 +24,8 @@ type Pipeline struct {
 	Recorder   *recorder.Recorder
 	Livestream *livestream.Livestream
 
-	context context.Context
-	cancel  context.CancelFunc
+	Ctx    context.Context
+	cancel context.CancelFunc
 
 	mtx *sync.Mutex
 	Wg  *sync.WaitGroup
@@ -35,94 +35,117 @@ type Pipeline struct {
 
 // NewPipeline initializes a new Pipeline with the specified options.
 func NewPipeline(opts NewPipelineOptions) (*Pipeline, error) {
-	context, cancel := context.WithCancel(context.Background())
-	wg := &sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+
 	ID := fmt.Sprintf("pipeline_%d", time.Now().UTC().UnixMilli())
 
+	pipeLine := &Pipeline{
+		ID:                 ID,
+		Ctx:                ctx,
+		cancel:             cancel,
+		Wg:                 &sync.WaitGroup{},
+		mtx:                &sync.Mutex{},
+		NewPipelineOptions: &opts,
+	}
+
+	return pipeLine, nil
+}
+
+// Start: starts the Pipeline.
+func (p *Pipeline) Start() error {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("Recovered from panic", err)
+			p.Stop()
+		}
+	}()
+
+	if err := p.setupDisplay(); err != nil {
+		return err
+	}
+
+	if err := p.setupRecording(); err != nil {
+		return err
+	}
+
+	if err := p.setupLivestream(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// setupDisplay: sets up the Display.
+func (p *Pipeline) setupDisplay() error {
 	display := display.NewDisplay(display.DisplayOptions{
-		ID:     ID,
-		Wg:     wg,
+		ID:     p.ID,
+		Wg:     p.Wg,
 		Width:  config.DEFAULT_DISPLAY_OPTS.Width,
 		Height: config.DEFAULT_DISPLAY_OPTS.Height,
 		Depth:  config.DEFAULT_DISPLAY_OPTS.Depth,
 	})
 
-	err := display.LaunchXvfb()
-
-	defer func() {
-		if err != nil {
-			log.Println("Error Occured Starting Pipeline, Closing Display", err)
-			cancel()
-
-			if display != nil {
-				display.Close()
-			}
-		}
-	}()
-
-	if err != nil {
-		log.Println("Error Occured Launching XVFB, Closing Display", err)
-		return nil, err
+	if err := display.LaunchXvfb(); err != nil {
+		return fmt.Errorf("error Launching XVFB: %w", err)
 	}
 
-	err = display.LaunchPulseSink()
-
-	if err != nil {
-		log.Println("Error Occured Launching Pulse Sink, Closing Display", err)
-		return nil, err
+	if err := display.LaunchPulseSink(); err != nil {
+		return fmt.Errorf("error Launching Pulse Sink: %w", err)
 	}
 
-	_, err = display.LaunchChrome(opts.PageUrl)
-
-	if err != nil {
-		log.Println("Error Occured Launching Chrome, Closing Display", err)
-		return nil, err
+	if _, err := display.LaunchChrome(p.PageUrl); err != nil {
+		return fmt.Errorf("error Launching Chrome: %w", err)
 	}
 
-	time.Sleep(time.Second * 3)
+	p.Display = display
 
+	return nil
+}
+
+// setupRecording: sets up the Recording.
+func (p *Pipeline) setupRecording() error {
 	recorder := recorder.NewRecorder(
 		recorder.NewRecorderOptions{
-			ID:             ID,
-			Ctx:            context,
-			Wg:             wg,
-			Display:        display,
+			ID:             p.ID,
+			Ctx:            p.Ctx,
+			Wg:             p.Wg,
+			Display:        p.Display,
 			ShowFfmpegLogs: false,
 		},
 	)
 
 	if err := recorder.StartRecording(); err != nil {
-		return nil, err
+		return fmt.Errorf("error Starting Recording: %w", err)
 	}
 
-	pipeLine := &Pipeline{
-		ID:                 ID,
-		context:            context,
-		cancel:             cancel,
-		Wg:                 wg,
-		mtx:                &sync.Mutex{},
-		NewPipelineOptions: &opts,
+	p.Recorder = recorder
+
+	return nil
+}
+
+// setupLivestream: sets up the Livestream.
+func (p *Pipeline) setupLivestream() error {
+	if p.StreamUrl == "" {
+		return nil
 	}
 
-	if opts.StreamUrl != "" {
-		l := livestream.NewLivestream(
-			livestream.NewLivestreamOptions{
-				Ctx:            context,
-				Wg:             wg,
-				ShowFfmpegLogs: false,
-				StreamUrl:      opts.StreamUrl,
-				Display:        display,
-			},
-		)
+	l := livestream.NewLivestream(
+		livestream.NewLivestreamOptions{
+			Ctx:            p.Ctx,
+			Wg:             p.Wg,
+			ShowFfmpegLogs: false,
+			StreamUrl:      p.StreamUrl,
+			Display:        p.Display,
+		},
+	)
 
-		if err := l.StartStream(); err != nil {
-			return nil, err
-		}
-
-		pipeLine.Livestream = l
+	if err := l.StartStream(); err != nil {
+		return fmt.Errorf("error Starting Livestream: %w", err)
 	}
 
-	return pipeLine, nil
+	p.Livestream = l
+
+	return nil
 }
 
 // Stop: stops the Pipeline.
@@ -131,6 +154,7 @@ func (p *Pipeline) Stop() error {
 	defer p.mtx.Unlock()
 	log.Println("Stopping Pipeline...", p.ID)
 
+	// Closes the context and all the resources, with it.
 	p.cancel()
 
 	if p.Display != nil {
@@ -138,7 +162,6 @@ func (p *Pipeline) Stop() error {
 	}
 
 	p.Wg.Wait()
-
 	log.Println("Pipeline Stopped", p.ID)
 
 	return nil
