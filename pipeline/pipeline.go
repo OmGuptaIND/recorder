@@ -110,7 +110,8 @@ func (p *Pipeline) setupRecording() error {
 			Ctx:            p.Ctx,
 			Wg:             p.Wg,
 			Display:        p.Display,
-			ShowFfmpegLogs: false,
+			Chunking:       &recorder.ChunkingOptions{ChunkDuration: "10"},
+			ShowFfmpegLogs: true,
 		},
 	)
 

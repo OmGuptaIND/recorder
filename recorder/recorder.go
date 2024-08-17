@@ -7,24 +7,30 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/OmGuptaIND/display"
 )
 
+type ChunkingOptions struct {
+	ChunkDuration string
+}
+
 type NewRecorderOptions struct {
 	ID             string
 	ShowFfmpegLogs bool
 	Ctx            context.Context
 	Wg             *sync.WaitGroup
+	Chunking       *ChunkingOptions
 	*display.Display
 }
 
 type Recorder struct {
-	mtx           *sync.Mutex
-	recordCmd     *exec.Cmd
-	recordingPath string
+	mtx                 *sync.Mutex
+	recordCmd           *exec.Cmd
+	recordingFolderPath string
 
 	CloseHook func() error
 
@@ -34,24 +40,24 @@ type Recorder struct {
 	*NewRecorderOptions
 }
 
-const RECORDING_DIR = "./recordings"
+const RECORDING_DIR = "recordings"
 
 func NewRecorder(opts NewRecorderOptions) *Recorder {
-	RECORDING_PATH := fmt.Sprintf("./%s/%s", RECORDING_DIR, opts.ID)
+	RECORDING_FOLDER_PATH := fmt.Sprintf("./%s/%s", RECORDING_DIR, opts.ID)
 
-	if _, err := os.Stat(RECORDING_PATH); os.IsNotExist(err) {
-		if err := os.MkdirAll(RECORDING_PATH, 0755); err != nil {
+	if _, err := os.Stat(RECORDING_FOLDER_PATH); os.IsNotExist(err) {
+		if err := os.MkdirAll(RECORDING_FOLDER_PATH, 0755); err != nil {
 			log.Printf("Failed to create recording directory, %v", err)
 		}
 
-		log.Printf("Recording directory created at %s", RECORDING_PATH)
+		log.Printf("Recording directory created at %s", RECORDING_FOLDER_PATH)
 	}
 
 	return &Recorder{
-		mtx:                &sync.Mutex{},
-		done:               make(chan error, 1),
-		recordingPath:      RECORDING_PATH,
-		NewRecorderOptions: &opts,
+		mtx:                 &sync.Mutex{},
+		done:                make(chan error, 1),
+		recordingFolderPath: RECORDING_FOLDER_PATH,
+		NewRecorderOptions:  &opts,
 	}
 }
 
@@ -61,8 +67,13 @@ func (r *Recorder) Done() <-chan error {
 }
 
 // RecordingPath returns the path where the recording will be saved.
-func (r *Recorder) RecordingPath() string {
-	return fmt.Sprintf("./%s/%s.mp4", r.recordingPath, r.ID)
+func (r *Recorder) recordingFilePath() string {
+	return fmt.Sprintf("./%s/%s.mp4", r.recordingFolderPath, r.ID)
+}
+
+// RecordingChunkPath returns the path where the recording chunk will be saved.
+func (r *Recorder) recordingChunkPath() string {
+	return filepath.Join(r.recordingFolderPath, "chunk_%03d_%Y-%m-%d_%H-%M-%S.mp4")
 }
 
 func (r *Recorder) StartRecording() error {
@@ -77,12 +88,10 @@ func (r *Recorder) StartRecording() error {
 	r.Wg.Add(1)
 	go r.HandleContextCancel()
 
-	videoSize := fmt.Sprintf("%dx%d", r.GetWidth(), r.GetHeight())
-
 	cmd := exec.Command("ffmpeg",
 		"-nostdin",
 		"-loglevel", "trace",
-		"-video_size", videoSize,
+		"-video_size", fmt.Sprintf("%dx%d", r.GetWidth(), r.GetHeight()),
 		"-f", "x11grab",
 		"-i", r.GetDisplayId(),
 		"-f", "pulse",
@@ -94,8 +103,13 @@ func (r *Recorder) StartRecording() error {
 		"-c:a", "aac",
 		"-b:a", "128k",
 		"-async", "1",
+		"-f", "segment",
+		"-segment_time", "10",
+		"-segment_format", "mp4",
+		"-reset_timestamps", "1",
+		"-strftime", "1",
 		"-y",
-		r.RecordingPath())
+		r.recordingChunkPath())
 
 	if r.ShowFfmpegLogs {
 		stderr, err := cmd.StderrPipe()
@@ -190,7 +204,7 @@ func (r *Recorder) Close() error {
 }
 
 func (r *Recorder) VerifyOutputFile() error {
-	info, err := os.Stat(r.RecordingPath())
+	info, err := os.Stat(r.recordingFilePath())
 	if err != nil {
 		return fmt.Errorf("failed to stat output file: %v", err)
 	}
@@ -199,7 +213,7 @@ func (r *Recorder) VerifyOutputFile() error {
 	}
 	log.Printf("Output file size: %d bytes", info.Size())
 
-	cmd := exec.Command("ffprobe", "-v", "error", r.RecordingPath())
+	cmd := exec.Command("ffprobe", "-v", "error", r.recordingFilePath())
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("ffprobe check failed: %v, output: %s", err, output)
 	}
