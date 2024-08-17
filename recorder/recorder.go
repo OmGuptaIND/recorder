@@ -28,7 +28,7 @@ type Recorder struct {
 
 	CloseHook func() error
 
-	done   chan bool
+	done   chan error
 	Closed bool
 
 	*NewRecorderOptions
@@ -49,14 +49,14 @@ func NewRecorder(opts NewRecorderOptions) *Recorder {
 
 	return &Recorder{
 		mtx:                &sync.Mutex{},
-		done:               make(chan bool, 1),
+		done:               make(chan error, 1),
 		recordingPath:      RECORDING_PATH,
 		NewRecorderOptions: &opts,
 	}
 }
 
 // Done returns a channel that will be closed when the recording is done.
-func (r *Recorder) Done() <-chan bool {
+func (r *Recorder) Done() <-chan error {
 	return r.done
 }
 
@@ -117,6 +117,14 @@ func (r *Recorder) StartRecording() error {
 		return fmt.Errorf("failed to start FFmpeg: %v", err)
 	}
 
+	r.Wg.Add(1)
+	go func() {
+		defer r.Wg.Done()
+		if err := cmd.Wait(); err != nil {
+			r.done <- err
+		}
+	}()
+
 	r.recordCmd = cmd
 
 	log.Println("Recorder process started successfully")
@@ -154,17 +162,10 @@ func (r *Recorder) Close() error {
 		return fmt.Errorf("failed to send interrupt signal: %v", err)
 	}
 
-	done := make(chan error, 1)
 	timeout := time.After(10 * time.Second)
 
-	r.Wg.Add(1)
-	go func() {
-		defer r.Wg.Done()
-		done <- r.recordCmd.Wait()
-	}()
-
 	select {
-	case err := <-done:
+	case err := <-r.done:
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				if exitErr.ExitCode() != 255 || exitErr.ExitCode() != -1 {

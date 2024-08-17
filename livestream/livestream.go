@@ -31,7 +31,7 @@ type Livestream struct {
 	streamCmd *exec.Cmd
 	closeHook func() error
 
-	done   chan bool
+	done   chan error
 	Closed bool
 
 	*NewLivestreamOptions
@@ -42,13 +42,13 @@ func NewLivestream(opts NewLivestreamOptions) *Livestream {
 	return &Livestream{
 		ID:                   uuid.New().String(),
 		mtx:                  &sync.Mutex{},
-		done:                 make(chan bool, 1),
+		done:                 make(chan error, 1),
 		NewLivestreamOptions: &opts,
 	}
 }
 
 // Done returns a channel that will be closed when the stream is done.
-func (l *Livestream) Done() <-chan bool {
+func (l *Livestream) Done() <-chan error {
 	return l.done
 }
 
@@ -106,6 +106,14 @@ func (l *Livestream) StartStream() error {
 		return err
 	}
 
+	l.Wg.Add(1)
+	go func() {
+		defer l.Wg.Done()
+		if err := cmd.Wait(); err != nil {
+			l.done <- err
+		}
+	}()
+
 	l.streamCmd = cmd
 
 	log.Println("Stream process started successfully")
@@ -142,17 +150,10 @@ func (l *Livestream) Close() error {
 		return fmt.Errorf("failed to send interrupt signal: %v", err)
 	}
 
-	done := make(chan error, 1)
 	timeout := time.After(10 * time.Second)
 
-	l.Wg.Add(1)
-	go func() {
-		defer l.Wg.Done()
-		done <- l.streamCmd.Wait()
-	}()
-
 	select {
-	case err := <-done:
+	case err := <-l.done:
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				if exitErr.ExitCode() != 255 || exitErr.ExitCode() != -1 {
