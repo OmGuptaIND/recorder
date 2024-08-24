@@ -18,18 +18,18 @@ import (
 type ApiServerOptions struct {
 	Port int
 	Wg   *sync.WaitGroup
-	Ctx  context.Context
 }
 
 // ApiServer represents an HTTP server that provides endpoints to manage media nodes.
 type ApiServer struct {
+	ctx  context.Context
 	app  *fiber.App
 	opts ApiServerOptions
 	done chan bool
 }
 
 // NewApiServer initializes a new API server with the specified options.
-func NewApiServer(opts ApiServerOptions) *ApiServer {
+func NewApiServer(ctx context.Context, opts ApiServerOptions) *ApiServer {
 	app := fiber.New(fiber.Config{
 		ErrorHandler: errorHandler,
 	})
@@ -78,7 +78,7 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 		}
 	}
 
-	p, err := pipeline.NewPipeline(opts)
+	p, err := pipeline.NewPipeline(a.ctx, opts)
 
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording pipeline")
@@ -89,7 +89,7 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording pipeline")
 	}
 
-	store.GetStore().AddPipeLine(p.ID, p)
+	store.GetStore(&a.ctx).AddPipeLine(p.ID, p)
 
 	return c.JSON(StartRecordingResponse{
 		Status: "Recording Pipeline started",
@@ -105,7 +105,7 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
 	}
 
-	p, ok := store.GetStore().GetPipeline(req.Id)
+	p, ok := store.GetStore(&a.ctx).GetPipeline(req.Id)
 
 	if !ok {
 		return fiber.NewError(fiber.StatusNotFound, "Pipeline not found")
@@ -116,7 +116,7 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to stop recording pipeline")
 	}
 
-	store.GetStore().RemovePipeline(p.ID)
+	store.GetStore(&a.ctx).RemovePipeline(p.ID)
 
 	return c.JSON(StopRecordingResponse{
 		Status: "Recording stopped",
@@ -150,7 +150,7 @@ func (a *ApiServer) Start() <-chan struct{} {
 		err := a.app.Listen(addr, fiber.ListenConfig{
 			ListenerNetwork:       "tcp",
 			DisableStartupMessage: true,
-			GracefulContext:       a.opts.Ctx,
+			GracefulContext:       a.ctx,
 			OnShutdownError: func(err error) {
 				log.Printf("error shutting down the server: %v\n", err)
 				close(a.done)

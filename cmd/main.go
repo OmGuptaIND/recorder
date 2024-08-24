@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	"github.com/OmGuptaIND/api"
+	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/env"
 	"github.com/OmGuptaIND/pkg"
 	store "github.com/OmGuptaIND/store"
@@ -18,12 +19,11 @@ func main() {
 	defer cancel()
 
 	// Create a new store
-	store.NewStore()
+	appStore := store.NewStore()
 
 	// Create a new API server
-	apiServer := api.NewApiServer(api.ApiServerOptions{
+	apiServer := api.NewApiServer(context.WithValue(ctx, config.StoreKey, appStore), api.ApiServerOptions{
 		Port: 3000,
-		Ctx:  ctx,
 	})
 
 	apiServer.Start()

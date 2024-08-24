@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"testing"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestApiServer(t *testing.T) {
-	apiServer := api.NewApiServer(api.ApiServerOptions{
+	apiServer := api.NewApiServer(context.Background(), api.ApiServerOptions{
 		Port: 3000,
 	})
 

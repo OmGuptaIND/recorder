@@ -1,8 +1,10 @@
 package store
 
 import (
+	"context"
 	"sync"
 
+	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/pipeline"
 )
 
@@ -13,9 +15,15 @@ type AppStore struct {
 	Pipelines map[string]*pipeline.Pipeline
 }
 
-// GetStore retrieves the store.
-func GetStore() *AppStore {
-	return store
+// GetStore retrieves the store from the context, if ctx is nil it returns the global store.
+func GetStore(ctx *context.Context) *AppStore {
+	if ctx == nil {
+		return store
+	}
+
+	ctxStore, _ := (*ctx).Value(config.StoreKey).(*AppStore)
+
+	return ctxStore
 }
 
 // NewStore creates a new store.

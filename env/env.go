@@ -43,10 +43,18 @@ func GetBucketName() string {
 	return viper.GetString("BUCKET_NAME")
 }
 
+func GetBucketEndpoint() string {
+	return viper.GetString("BUCKET_ENDPOINT")
+}
+
 func GetBucketAppKey() string {
 	return viper.GetString("BUCKET_APP_KEY")
 }
 
 func GetBucketKeyId() string {
 	return viper.GetString("BUCKET_KEY_ID")
+}
+
+func GetBucketRegion() string {
+	return viper.GetString("BUCKET_REGION")
 }

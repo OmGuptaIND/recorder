@@ -1,4 +1,4 @@
-package recorder
+package chunker
 
 import (
 	"context"
@@ -30,4 +30,9 @@ func NewChunker(ctx context.Context, opts *ChunkerOptions) (*Chunker, error) {
 	}
 
 	return chunker, nil
+}
+
+// StartChunking starts the chunking process.
+func (c *Chunker) StartChunking() error {
+	return nil
 }
