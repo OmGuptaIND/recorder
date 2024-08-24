@@ -73,6 +73,7 @@ func (c *Chunker) Done() <-chan struct{} {
 func (c *Chunker) Stop() {
 	log.Println("Stopping chunker")
 	c.executor.Stop()
+	c.watcher.Stop()
 }
 
 // StartChunking starts the chunking process.

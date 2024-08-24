@@ -34,8 +34,6 @@ func NewWatcher(ctx context.Context) (*Watcher, error) {
 
 	log.Println("Watcher created")
 
-	go watcher.handleContextClose()
-
 	return watcher, nil
 }
 
@@ -62,12 +60,6 @@ func (w *Watcher) Stop() {
 	}
 
 	close(w.chunkChan)
-}
-
-// Watch starts the watcher.
-func (w *Watcher) handleContextClose() {
-	<-w.ctx.Done()
-	w.Stop()
 }
 
 // GetRecordinDirectoryPath returns the path of the recording directory.
