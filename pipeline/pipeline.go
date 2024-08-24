@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OmGuptaIND/chunker"
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/livestream"
@@ -25,7 +24,6 @@ type Pipeline struct {
 	Display    *display.Display
 	Recorder   *recorder.Recorder
 	Livestream *livestream.Livestream
-	Chunker    *chunker.Chunker
 
 	Ctx    context.Context
 	cancel context.CancelFunc
@@ -107,18 +105,6 @@ func (p *Pipeline) setupDisplay() error {
 
 // setupRecording: sets up the Recording.
 func (p *Pipeline) setupRecording() error {
-	chunker, err := chunker.NewChunker(p.Ctx, &chunker.ChunkerOptions{})
-
-	if err != nil {
-		return fmt.Errorf("error Creating Chunker: %w", err)
-	}
-
-	if err := chunker.StartChunking(); err != nil {
-		return fmt.Errorf("error Starting Chunking: %w", err)
-	}
-
-	p.Chunker = chunker
-
 	recorder := recorder.NewRecorder(
 		recorder.NewRecorderOptions{
 			ID:             p.ID,

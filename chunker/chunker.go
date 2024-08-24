@@ -36,7 +36,7 @@ func NewChunker(ctx context.Context, opts *ChunkerOptions) (*Chunker, error) {
 	})
 
 	chunker := &Chunker{
-		context.WithoutCancel(ctx),
+		ctx,
 		cloudClient,
 		workerExecutor,
 		make(chan struct{}, 1),
@@ -52,17 +52,18 @@ func (c *Chunker) Wait() {
 	c.executor.Wait()
 }
 
-// Stop stops the chunker.
-func (c *Chunker) Stop() {
-	c.executor.Stop()
-}
-
 // Done returns a channel that is closed when the chunker is done.
 func (c *Chunker) Done() <-chan struct{} {
 	return c.done
 }
 
+// Stop stops the chunker.
+func (c *Chunker) Stop() {
+	log.Println("Stopping chunker")
+	c.executor.Stop()
+}
+
 // StartChunking starts the chunking process.
-func (c *Chunker) StartChunking() error {
+func (c *Chunker) Start() error {
 	return nil
 }
