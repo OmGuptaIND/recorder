@@ -14,6 +14,7 @@ type ChunkerOptions struct{}
 type Chunker struct {
 	ctx         context.Context
 	cloudClient cloud.CloudClient
+	watcher     *Watcher
 	executor    *executor.WorkerExecutor
 
 	done chan struct{}
@@ -23,9 +24,17 @@ type Chunker struct {
 // Chunker is responsible for chunking the recording, takes the decision when to batch upload to the cloud.
 // and then we to locally stitch the chunks together and upload to the cloud.
 func NewChunker(ctx context.Context, opts *ChunkerOptions) (*Chunker, error) {
+	watcher, err := NewWatcher(ctx)
+
+	if err != nil {
+		log.Println("Error creating watcher")
+		return nil, err
+	}
+
 	cloudClient, err := cloud.NewAwsClient(ctx, &cloud.AwsClientOptions{})
 
 	if err != nil {
+		log.Println("Error creating cloud client")
 		return nil, err
 	}
 
@@ -38,17 +47,20 @@ func NewChunker(ctx context.Context, opts *ChunkerOptions) (*Chunker, error) {
 	chunker := &Chunker{
 		ctx,
 		cloudClient,
+		watcher,
 		workerExecutor,
 		make(chan struct{}, 1),
 		opts,
 	}
+
+	log.Println("Chunker created")
 
 	return chunker, nil
 }
 
 // EnqueueChunk enqueues a chunk to be uploaded to the cloud.
 func (c *Chunker) Wait() {
-	log.Println("Waiting for any pending chunk to finish uploading")
+	log.Println("Waiting for any pending chunk to finish uploading, [ Else Close Forcefully ]")
 	c.executor.Wait()
 }
 
@@ -65,5 +77,9 @@ func (c *Chunker) Stop() {
 
 // StartChunking starts the chunking process.
 func (c *Chunker) Start() error {
+	if c.ctx.Err() != nil {
+		return c.ctx.Err()
+	}
+
 	return nil
 }

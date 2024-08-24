@@ -30,6 +30,10 @@ func main() {
 
 	appCtx := createAppContext(ctx, appStore, recChunker)
 
+	if err := recChunker.Start(); err != nil {
+		log.Fatalf("Error starting chunker: %v", err)
+	}
+
 	apiServer := api.NewApiServer(appCtx, api.ApiServerOptions{
 		Port: 3000,
 	})
@@ -42,6 +46,7 @@ func main() {
 	go func() {
 		for val := range sig {
 			if val == syscall.SIGINT || val == syscall.SIGTERM {
+				log.Println("Shutting down...")
 				cancel()
 				signal.Stop(sig)
 				return

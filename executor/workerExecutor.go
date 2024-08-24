@@ -60,7 +60,12 @@ func (w *WorkerExecutor) Wait() {
 
 // Stop the worker queue.
 func (w *WorkerExecutor) Stop() {
+	if w.jobs == nil {
+		return
+	}
+
 	close(w.jobs)
+	w.jobs = nil
 }
 
 // Wroker spins up a worker that processes jobs from the queue.

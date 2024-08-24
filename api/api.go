@@ -35,6 +35,7 @@ func NewApiServer(ctx context.Context, opts ApiServerOptions) *ApiServer {
 	})
 
 	apiServer := &ApiServer{
+		ctx:  ctx,
 		app:  app,
 		opts: opts,
 		done: make(chan bool, 1),

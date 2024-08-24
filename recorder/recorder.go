@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
 )
 
@@ -40,11 +41,9 @@ type Recorder struct {
 	*NewRecorderOptions
 }
 
-const RECORDING_DIR = "recordings"
-
 // NewRecorder creates a new Recorder instance.
 func NewRecorder(opts NewRecorderOptions) *Recorder {
-	RECORDING_FOLDER_PATH := fmt.Sprintf("./%s/%s", RECORDING_DIR, opts.ID)
+	RECORDING_FOLDER_PATH := fmt.Sprintf("./%s/%s", config.RECORDING_DIR, opts.ID)
 
 	if _, err := os.Stat(RECORDING_FOLDER_PATH); os.IsNotExist(err) {
 		if err := os.MkdirAll(RECORDING_FOLDER_PATH, 0755); err != nil {

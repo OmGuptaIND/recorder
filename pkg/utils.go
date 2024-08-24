@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,4 +24,18 @@ func HandleSignal() chan os.Signal {
 
 func RandomDisplay() string {
 	return fmt.Sprintf(":%d", (time.Now().Nanosecond()%1000)+os.Getpid()%1000+100)
+}
+
+// CreateDirectory creates a directory if it does not exist.
+func CreateDirectory(directoryPath string) error {
+
+	if _, err := os.Stat(directoryPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(directoryPath, 0755); err != nil {
+			return err
+		}
+
+		log.Printf("Created directory at %s", directoryPath)
+	}
+
+	return nil
 }
