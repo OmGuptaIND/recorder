@@ -2,7 +2,10 @@ module github.com/OmGuptaIND
 
 go 1.22.5
 
-require github.com/google/uuid v1.6.0
+require (
+	github.com/aws/aws-sdk-go v1.55.5
+	github.com/google/uuid v1.6.0
+)
 
 require (
 	github.com/chromedp/cdproto v0.0.0-20240801214329-3f85d328b335 // indirect
@@ -14,6 +17,7 @@ require (
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/gofiber/utils/v2 v2.0.0-beta.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

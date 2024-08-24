@@ -37,3 +37,16 @@ func LoadEnvironmentVariables() (*Env, error) {
 func IsDevelopment() bool {
 	return viper.GetString("ENVIRONMENT") == "development"
 }
+
+// RecordingBucket returns the recording bucket
+func GetBucketName() string {
+	return viper.GetString("BUCKET_NAME")
+}
+
+func GetBucketAppKey() string {
+	return viper.GetString("BUCKET_APP_KEY")
+}
+
+func GetBucketKeyId() string {
+	return viper.GetString("BUCKET_KEY_ID")
+}
