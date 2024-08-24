@@ -3,6 +3,7 @@ package chunker
 import (
 	"context"
 	"log"
+	"sync"
 )
 
 type ChunkInfo struct {
@@ -10,6 +11,7 @@ type ChunkInfo struct {
 
 type Watcher struct {
 	ctx       context.Context
+	wg        *sync.WaitGroup
 	chunkChan chan struct{}
 }
 
@@ -17,6 +19,7 @@ type Watcher struct {
 func NewWatcher(ctx context.Context) (*Watcher, error) {
 	watcher := &Watcher{
 		ctx,
+		&sync.WaitGroup{},
 		make(chan struct{}, 1),
 	}
 

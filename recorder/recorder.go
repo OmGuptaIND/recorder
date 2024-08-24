@@ -94,7 +94,7 @@ func (r *Recorder) recordingFilePath() string {
 
 // RecordingChunkPath returns the path where the recording chunk will be saved.
 func (r *Recorder) recordingChunkPath() string {
-	return filepath.Join(r.GetRecordinDirectoryPath(), "chunk_%03d_%Y-%m-%d_%H-%M-%S.mp4")
+	return filepath.Join(r.GetRecordinDirectoryPath(), "chunk_%05d.mp4")
 }
 
 // StartRecording starts the recording process.
@@ -127,10 +127,11 @@ func (r *Recorder) StartRecording() error {
 		"-b:a", "128k",
 		"-async", "1",
 		"-f", "segment",
+		"-segment_start_number", "0",
+		"-segment_list", "out.list",
 		"-segment_time", r.ChunkingDuration(),
 		"-segment_format", "mp4",
 		"-reset_timestamps", "1",
-		"-strftime", "1",
 		"-y",
 		r.recordingChunkPath())
 
