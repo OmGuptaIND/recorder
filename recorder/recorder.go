@@ -13,7 +13,14 @@ import (
 
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
+	"github.com/OmGuptaIND/pkg"
 )
+
+type ChunkInfo struct {
+	Filename string  `json:"filename"`
+	PTS      float64 `json:"pts_time"`
+	Duration float64 `json:"duration"`
+}
 
 type ChunkingOptions struct {
 	ChunkDuration string
@@ -29,9 +36,8 @@ type NewRecorderOptions struct {
 }
 
 type Recorder struct {
-	mtx                 *sync.Mutex
-	recordCmd           *exec.Cmd
-	recordingFolderPath string
+	mtx       *sync.Mutex
+	recordCmd *exec.Cmd
 
 	CloseHook func() error
 
@@ -43,22 +49,17 @@ type Recorder struct {
 
 // NewRecorder creates a new Recorder instance.
 func NewRecorder(opts NewRecorderOptions) *Recorder {
-	RECORDING_FOLDER_PATH := fmt.Sprintf("./%s/%s", config.RECORDING_DIR, opts.ID)
-
-	if _, err := os.Stat(RECORDING_FOLDER_PATH); os.IsNotExist(err) {
-		if err := os.MkdirAll(RECORDING_FOLDER_PATH, 0755); err != nil {
-			log.Printf("Failed to create recording directory, %v", err)
-		}
-
-		log.Printf("Recording directory created at %s", RECORDING_FOLDER_PATH)
+	recorder := &Recorder{
+		mtx:                &sync.Mutex{},
+		done:               make(chan error, 1),
+		NewRecorderOptions: &opts,
 	}
 
-	return &Recorder{
-		mtx:                 &sync.Mutex{},
-		done:                make(chan error, 1),
-		recordingFolderPath: RECORDING_FOLDER_PATH,
-		NewRecorderOptions:  &opts,
-	}
+	path := recorder.GetRecordinDirectoryPath()
+
+	log.Println("Recording Directory Path: ", path)
+
+	return recorder
 }
 
 // Done returns a channel that will be closed when the recording is done.
@@ -71,14 +72,29 @@ func (r *Recorder) ChunkingDuration() string {
 	return r.Chunking.ChunkDuration
 }
 
+// GetRecordinDirectoryPath returns the path where the recording will be saved.
+func (r *Recorder) GetRecordinDirectoryPath() string {
+	cwd, err := os.Getwd()
+
+	if err != nil {
+		log.Fatalf("Failed to get current working directory, %v", err)
+	}
+
+	path := filepath.Join(cwd, config.RECORDING_DIR, r.ID)
+
+	pkg.CreateDirectory(path)
+
+	return path
+}
+
 // RecordingPath returns the path where the recording will be saved.
 func (r *Recorder) recordingFilePath() string {
-	return fmt.Sprintf("./%s/%s.mp4", r.recordingFolderPath, r.ID)
+	return filepath.Join(r.GetRecordinDirectoryPath(), fmt.Sprintf("%s.mp4", r.ID))
 }
 
 // RecordingChunkPath returns the path where the recording chunk will be saved.
 func (r *Recorder) recordingChunkPath() string {
-	return filepath.Join(r.recordingFolderPath, "chunk_%03d_%Y-%m-%d_%H-%M-%S.mp4")
+	return filepath.Join(r.GetRecordinDirectoryPath(), "chunk_%03d_%Y-%m-%d_%H-%M-%S.mp4")
 }
 
 // StartRecording starts the recording process.
@@ -92,11 +108,11 @@ func (r *Recorder) StartRecording() error {
 
 	log.Println("Starting Recorder process...")
 	r.Wg.Add(1)
-	go r.HandleContextCancel()
+	go r.handleContextCancel()
 
 	cmd := exec.Command("ffmpeg",
 		"-nostdin",
-		"-loglevel", "trace",
+		"-loglevel", "info",
 		"-video_size", fmt.Sprintf("%dx%d", r.GetWidth(), r.GetHeight()),
 		"-f", "x11grab",
 		"-i", r.GetDisplayId(),
@@ -140,6 +156,7 @@ func (r *Recorder) StartRecording() error {
 	r.Wg.Add(1)
 	go func() {
 		defer r.Wg.Done()
+
 		if err := cmd.Wait(); err != nil {
 			r.done <- err
 		}
@@ -227,8 +244,8 @@ func (r *Recorder) VerifyOutputFile() error {
 	return nil
 }
 
-// HandleContextCancel handles the context cancel signal.
-func (r *Recorder) HandleContextCancel() {
+// handleContextCancel handles the context cancel signal.
+func (r *Recorder) handleContextCancel() {
 	defer r.Wg.Done()
 	<-r.Ctx.Done()
 	log.Println("Context Done, Stopping Recorder")
