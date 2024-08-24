@@ -2,16 +2,16 @@ package pipeline
 
 import "context"
 
-type MonitorOptions struct{}
+type ObserverOptions struct{}
 
-type Monitor struct {
+type Observer struct {
 	ctx context.Context
-	*MonitorOptions
+	*ObserverOptions
 }
 
 // NewMonitor creates a new Monitor, Which Keeps track of the pipeline.
-func NewMonitor(ctx context.Context, opts *MonitorOptions) *Monitor {
-	return &Monitor{
+func NewObserver(ctx context.Context, opts *ObserverOptions) *Observer {
+	return &Observer{
 		context.WithoutCancel(ctx),
 		opts,
 	}

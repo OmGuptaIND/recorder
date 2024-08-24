@@ -16,23 +16,21 @@ import (
 
 func main() {
 	env.LoadEnvironmentVariables()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	appStore := store.NewStore()
 
-	globalCtx := context.WithValue(context.Background(), config.StoreKey, appStore)
-
-	ctx, cancel := context.WithCancel(globalCtx)
-	defer cancel()
-
-	recChunker, err := chunker.NewChunker(ctx, &chunker.ChunkerOptions{})
+	recChunker, err := chunker.NewChunker(context.WithValue(ctx, config.StoreKey, appStore), &chunker.ChunkerOptions{})
 	defer recChunker.Stop()
 
 	if err != nil {
 		log.Fatalf("Error creating chunker: %v", err)
 	}
 
-	// Create a new API server
-	apiServer := api.NewApiServer(ctx, api.ApiServerOptions{
+	appCtx := createAppContext(ctx, appStore, recChunker)
+
+	apiServer := api.NewApiServer(appCtx, api.ApiServerOptions{
 		Port: 3000,
 	})
 
@@ -53,4 +51,11 @@ func main() {
 
 	<-apiServer.Done()
 	recChunker.Wait()
+}
+
+// CreateGlobalContext creates a new context with the provided store and chunker
+func createAppContext(ctx context.Context, store *store.AppStore, chunker *chunker.Chunker) context.Context {
+	ctx = context.WithValue(ctx, config.StoreKey, store)
+	ctx = context.WithValue(ctx, config.ChunkerKey, chunker)
+	return ctx
 }

@@ -23,6 +23,7 @@ type Pipeline struct {
 	ID         string
 	Display    *display.Display
 	Recorder   *recorder.Recorder
+	Observer   *Observer
 	Livestream *livestream.Livestream
 
 	Ctx    context.Context
@@ -45,6 +46,7 @@ func NewPipeline(ctx context.Context, opts *NewPipelineOptions) (*Pipeline, erro
 		Ctx:                ctx,
 		cancel:             cancel,
 		Wg:                 &sync.WaitGroup{},
+		Observer:           NewObserver(ctx, &ObserverOptions{}),
 		mtx:                &sync.Mutex{},
 		NewPipelineOptions: opts,
 	}

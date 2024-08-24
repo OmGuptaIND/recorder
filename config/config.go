@@ -1,6 +1,8 @@
 package config
 
-import "github.com/OmGuptaIND/display"
+import (
+	"github.com/OmGuptaIND/display"
+)
 
 var DEFAULT_DISPLAY_OPTS = display.DisplayOptions{
 	Width:  1280,
@@ -11,5 +13,6 @@ var DEFAULT_DISPLAY_OPTS = display.DisplayOptions{
 type ContextKey string
 
 const (
-	StoreKey ContextKey = "store"
+	StoreKey   ContextKey = "store"
+	ChunkerKey ContextKey = "chunker"
 )
