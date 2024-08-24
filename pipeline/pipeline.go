@@ -16,6 +16,7 @@ import (
 type NewPipelineOptions struct {
 	PageUrl   string
 	StreamUrl string
+	Chunking  *recorder.ChunkingOptions
 }
 
 type Pipeline struct {
@@ -34,7 +35,7 @@ type Pipeline struct {
 }
 
 // NewPipeline initializes a new Pipeline with the specified options.
-func NewPipeline(opts NewPipelineOptions) (*Pipeline, error) {
+func NewPipeline(opts *NewPipelineOptions) (*Pipeline, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ID := fmt.Sprintf("pipeline_%d", time.Now().UTC().UnixMilli())
@@ -45,7 +46,7 @@ func NewPipeline(opts NewPipelineOptions) (*Pipeline, error) {
 		cancel:             cancel,
 		Wg:                 &sync.WaitGroup{},
 		mtx:                &sync.Mutex{},
-		NewPipelineOptions: &opts,
+		NewPipelineOptions: opts,
 	}
 
 	return pipeLine, nil
@@ -110,7 +111,7 @@ func (p *Pipeline) setupRecording() error {
 			Ctx:            p.Ctx,
 			Wg:             p.Wg,
 			Display:        p.Display,
-			Chunking:       &recorder.ChunkingOptions{ChunkDuration: "10"},
+			Chunking:       p.Chunking,
 			ShowFfmpegLogs: true,
 		},
 	)

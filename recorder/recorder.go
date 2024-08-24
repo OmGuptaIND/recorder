@@ -67,6 +67,11 @@ func (r *Recorder) Done() <-chan error {
 	return r.done
 }
 
+// ChunkingDuration returns the duration of each chunk.
+func (r *Recorder) ChunkingDuration() string {
+	return r.Chunking.ChunkDuration
+}
+
 // RecordingPath returns the path where the recording will be saved.
 func (r *Recorder) recordingFilePath() string {
 	return fmt.Sprintf("./%s/%s.mp4", r.recordingFolderPath, r.ID)
@@ -106,7 +111,7 @@ func (r *Recorder) StartRecording() error {
 		"-b:a", "128k",
 		"-async", "1",
 		"-f", "segment",
-		"-segment_time", "10",
+		"-segment_time", r.ChunkingDuration(),
 		"-segment_format", "mp4",
 		"-reset_timestamps", "1",
 		"-strftime", "1",

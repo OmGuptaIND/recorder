@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/OmGuptaIND/pipeline"
+	"github.com/OmGuptaIND/recorder"
 	"github.com/OmGuptaIND/store"
 	"github.com/gofiber/fiber/v3"
 )
@@ -66,10 +67,18 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request payload")
 	}
 
-	p, err := pipeline.NewPipeline(pipeline.NewPipelineOptions{
+	opts := &pipeline.NewPipelineOptions{
 		PageUrl:   req.Url,
 		StreamUrl: req.StreamUrl,
-	})
+	}
+
+	if req.Chunking != (ChunkRequest{}) {
+		opts.Chunking = &recorder.ChunkingOptions{
+			ChunkDuration: req.Chunking.Duration,
+		}
+	}
+
+	p, err := pipeline.NewPipeline(opts)
 
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to start recording pipeline")
