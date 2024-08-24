@@ -49,6 +49,8 @@ func (w *Watcher) Start() error {
 
 	w.fsWatcher = fsWatcher
 
+	log.Println("Watcher Started Watching: ", getRecordinDirectoryPath())
+
 	return nil
 }
 

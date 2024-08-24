@@ -82,5 +82,12 @@ func (c *Chunker) Start() error {
 		return c.ctx.Err()
 	}
 
+	if c.watcher != nil {
+		if err := c.watcher.Start(); err != nil {
+			log.Println("Error starting watcher")
+			return err
+		}
+	}
+
 	return nil
 }
