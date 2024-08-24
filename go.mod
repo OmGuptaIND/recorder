@@ -4,7 +4,6 @@ go 1.22.5
 
 require (
 	github.com/aws/aws-sdk-go v1.55.5
-	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/uuid v1.6.0
 )
 
@@ -12,6 +11,7 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20240801214329-3f85d328b335 // indirect
 	github.com/chromedp/sysutil v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect

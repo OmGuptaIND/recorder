@@ -113,6 +113,7 @@ func (r *Recorder) StartRecording() error {
 	cmd := exec.Command("ffmpeg",
 		"-nostdin",
 		"-loglevel", "info",
+		"-thread_queue_size", "512",
 		"-video_size", fmt.Sprintf("%dx%d", r.GetWidth(), r.GetHeight()),
 		"-f", "x11grab",
 		"-i", r.GetDisplayId(),
