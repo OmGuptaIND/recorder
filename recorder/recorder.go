@@ -16,12 +16,6 @@ import (
 	"github.com/OmGuptaIND/pkg"
 )
 
-type ChunkInfo struct {
-	Filename string  `json:"filename"`
-	PTS      float64 `json:"pts_time"`
-	Duration float64 `json:"duration"`
-}
-
 type ChunkingOptions struct {
 	ChunkDuration string
 }
@@ -29,37 +23,51 @@ type ChunkingOptions struct {
 type NewRecorderOptions struct {
 	ID             string
 	ShowFfmpegLogs bool
-	Ctx            context.Context
 	Wg             *sync.WaitGroup
 	Chunking       *ChunkingOptions
 	*display.Display
 }
 
 type Recorder struct {
+	ctx       context.Context
 	mtx       *sync.Mutex
 	recordCmd *exec.Cmd
 
+	Watcher *Watcher
+
 	CloseHook func() error
 
-	done   chan error
-	Closed bool
+	done chan error
 
 	*NewRecorderOptions
 }
 
 // NewRecorder creates a new Recorder instance.
-func NewRecorder(opts NewRecorderOptions) *Recorder {
+func NewRecorder(ctx context.Context, opts NewRecorderOptions) (*Recorder, error) {
 	recorder := &Recorder{
+		ctx:                ctx,
 		mtx:                &sync.Mutex{},
 		done:               make(chan error, 1),
 		NewRecorderOptions: &opts,
+	}
+
+	recorder.Watcher = NewWatcher(ctx, &WatcherOptions{
+		recorder: recorder,
+	})
+
+	if err := recorder.Watcher.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start Watcher: %v", err)
 	}
 
 	path := recorder.GetRecordinDirectoryPath()
 
 	log.Println("Recording Directory Path: ", path)
 
-	return recorder
+	return recorder, nil
+}
+
+func (r *Recorder) GetContext() context.Context {
+	return r.ctx
 }
 
 // Done returns a channel that will be closed when the recording is done.
@@ -93,6 +101,7 @@ func (r *Recorder) recordingFilePath() string {
 }
 
 // RecordingChunkPath returns the path where the recording chunk will be saved.
+// Returns the Path with the chunk number.
 func (r *Recorder) recordingChunkPath() string {
 	return filepath.Join(r.GetRecordinDirectoryPath(), "chunk_%05d.mp4")
 }
@@ -128,7 +137,6 @@ func (r *Recorder) StartRecording() error {
 		"-async", "1",
 		"-f", "segment",
 		"-segment_start_number", "0",
-		"-segment_list", "out.list",
 		"-segment_time", r.ChunkingDuration(),
 		"-segment_format", "mp4",
 		"-reset_timestamps", "1",
@@ -171,10 +179,38 @@ func (r *Recorder) StartRecording() error {
 	return nil
 }
 
+// StartWatcher starts the Watcher process.
+func (r *Recorder) StartWatcher() error {
+	if r.Watcher == nil {
+		return fmt.Errorf("Watcher is not initialized")
+	}
+
+	if r.Watcher.ctx.Err() != nil {
+		return r.Watcher.ctx.Err()
+	}
+
+	r.Wg.Add(1)
+	go func() {
+		defer r.Wg.Done()
+		r.Watcher.Start()
+
+		<-r.Watcher.Done()
+
+		log.Println("Watcher Done")
+	}()
+
+	return nil
+}
+
 // Close sends an interrupt signal to the recording process and waits for it to finish.
 func (r *Recorder) Close() error {
 	if r.recordCmd == nil {
 		log.Println("Recording process is not running")
+		return nil
+	}
+
+	if r.ctx.Err() != nil {
+		log.Println("Context is already cancelled, no need to stop Recorder")
 		return nil
 	}
 
@@ -221,7 +257,6 @@ func (r *Recorder) Close() error {
 
 	log.Println("Recording process stopped")
 
-	r.Closed = true
 	r.recordCmd = nil
 	close(r.done)
 
@@ -249,7 +284,7 @@ func (r *Recorder) VerifyOutputFile() error {
 // handleContextCancel handles the context cancel signal.
 func (r *Recorder) handleContextCancel() {
 	defer r.Wg.Done()
-	<-r.Ctx.Done()
+	<-r.ctx.Done()
 	log.Println("Context Done, Stopping Recorder")
 	r.Close()
 }

@@ -18,13 +18,14 @@ import (
 type NewLivestreamOptions struct {
 	ShowFfmpegLogs bool
 	StreamUrl      string
-	Ctx            context.Context
 	Wg             *sync.WaitGroup
 
 	*display.Display
 }
 
 type Livestream struct {
+	ctx context.Context
+
 	ID string
 
 	mtx       *sync.Mutex
@@ -38,8 +39,9 @@ type Livestream struct {
 }
 
 // NewLivestream initializes a new Livestream with the specified options.
-func NewLivestream(opts NewLivestreamOptions) *Livestream {
+func NewLivestream(ctx context.Context, opts NewLivestreamOptions) *Livestream {
 	return &Livestream{
+		ctx:                  ctx,
 		ID:                   uuid.New().String(),
 		mtx:                  &sync.Mutex{},
 		done:                 make(chan error, 1),
@@ -180,7 +182,7 @@ func (l *Livestream) Close() error {
 // HandleContextCancel handles the context cancel signal.
 func (l *Livestream) HandleContextCancel() {
 	defer l.Wg.Done()
-	<-l.Ctx.Done()
+	<-l.ctx.Done()
 	log.Println("Context Done, Stopping Stream")
 	l.Close()
 }

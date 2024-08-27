@@ -18,3 +18,11 @@ const (
 	StoreKey   ContextKey = "store"
 	ChunkerKey ContextKey = "chunker"
 )
+
+// ChunkInfo represents the information of a chunk, to be used by the Watcher.
+type ChunkInfo struct {
+	RecorderID string
+	ChunkName  string
+	ChunkPath  string
+	ChunkSize  int64
+}

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OmGuptaIND/chunker"
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/livestream"
@@ -20,14 +21,14 @@ type NewPipelineOptions struct {
 }
 
 type Pipeline struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	ID         string
 	Display    *display.Display
 	Recorder   *recorder.Recorder
-	Observer   *Observer
+	Chunker    *chunker.Chunker
 	Livestream *livestream.Livestream
-
-	Ctx    context.Context
-	cancel context.CancelFunc
 
 	mtx *sync.Mutex
 	Wg  *sync.WaitGroup
@@ -43,10 +44,10 @@ func NewPipeline(ctx context.Context, opts *NewPipelineOptions) (*Pipeline, erro
 
 	pipeLine := &Pipeline{
 		ID:                 ID,
-		Ctx:                ctx,
+		ctx:                ctx,
 		cancel:             cancel,
 		Wg:                 &sync.WaitGroup{},
-		Observer:           NewObserver(ctx, &ObserverOptions{}),
+		Chunker:            chunker.GetChunker(&ctx),
 		mtx:                &sync.Mutex{},
 		NewPipelineOptions: opts,
 	}
@@ -107,16 +108,22 @@ func (p *Pipeline) setupDisplay() error {
 
 // setupRecording: sets up the Recording.
 func (p *Pipeline) setupRecording() error {
-	recorder := recorder.NewRecorder(
+	recorder, err := recorder.NewRecorder(
+		p.ctx,
 		recorder.NewRecorderOptions{
 			ID:             p.ID,
-			Ctx:            p.Ctx,
 			Wg:             p.Wg,
 			Display:        p.Display,
 			Chunking:       p.Chunking,
-			ShowFfmpegLogs: true,
+			ShowFfmpegLogs: false,
 		},
 	)
+
+	if err != nil {
+		return fmt.Errorf("error Creating Recorder: %w", err)
+	}
+
+	p.Chunker.AddRecorder(recorder)
 
 	if err := recorder.StartRecording(); err != nil {
 		return fmt.Errorf("error Starting Recording: %w", err)
@@ -134,8 +141,8 @@ func (p *Pipeline) setupLivestream() error {
 	}
 
 	l := livestream.NewLivestream(
+		p.ctx,
 		livestream.NewLivestreamOptions{
-			Ctx:            p.Ctx,
 			Wg:             p.Wg,
 			ShowFfmpegLogs: false,
 			StreamUrl:      p.StreamUrl,

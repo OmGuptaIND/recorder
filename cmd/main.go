@@ -30,10 +30,6 @@ func main() {
 
 	appCtx := createAppContext(ctx, appStore, recChunker)
 
-	if err := recChunker.Start(); err != nil {
-		log.Fatalf("Error starting chunker: %v", err)
-	}
-
 	apiServer := api.NewApiServer(appCtx, api.ApiServerOptions{
 		Port: 3000,
 	})

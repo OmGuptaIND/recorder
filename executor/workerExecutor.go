@@ -70,38 +70,9 @@ func (w *WorkerExecutor) Stop() {
 
 // Wroker spins up a worker that processes jobs from the queue.
 func (w *WorkerExecutor) spinWorker() {
-	for {
-		select {
-		case job := <-w.jobs:
-			select {
-			case <-job.Ctx.Done():
-				err := job.Ctx.Err()
-
-				if err == context.Canceled {
-					log.Println("job context is cancelled", job.Id)
-					job.OnError(err)
-					return
-				}
-
-				if err == context.DeadlineExceeded {
-					log.Println("job context deadline exceeded", job.Id)
-					job.OnError(err)
-					return
-				}
-
-				w.processJob(job)
-
-			case <-w.ctx.Done():
-				log.Println("worker context is done")
-				job.OnError(w.ctx.Err())
-			}
-		case <-w.ctx.Done():
-			log.Println("worker context is done")
-			for job := range w.jobs {
-				job.OnError(w.ctx.Err())
-			}
-			return
-		}
+	for job := range w.jobs {
+		log.Println("New Job", job.Id)
+		w.processJob(job)
 	}
 }
 
@@ -110,16 +81,22 @@ func (w *WorkerExecutor) processJob(job Job) {
 	retryBackOff := w.opts.RetryBackoff
 
 	for i := 0; i <= w.opts.MaxRetries; i++ {
+		log.Println("Processing job", job.Id)
 		err := job.JobFunc()
 
 		if err == nil {
 			log.Println("Job", job.Id, "completed successfully")
-			job.OnSuccess()
+			if job.Ctx.Err() == nil {
+				job.OnSuccess()
+			}
 			return
 		}
 
 		if i == w.opts.MaxRetries {
-			job.OnError(err)
+			if job.Ctx.Err() == nil {
+				job.OnError(err)
+			}
+
 			return
 		}
 
