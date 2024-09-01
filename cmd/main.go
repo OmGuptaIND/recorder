@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/OmGuptaIND/api"
+	"github.com/OmGuptaIND/cloud"
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/env"
 	"github.com/OmGuptaIND/pkg"
@@ -20,7 +21,13 @@ func main() {
 
 	appStore := store.NewStore()
 
-	appCtx := createAppContext(ctx, appStore)
+	cloudClient, err := cloud.NewAwsClient(ctx, &cloud.AwsClientOptions{})
+
+	if err != nil {
+		log.Fatalf("Failed to create cloud client: %v", err)
+	}
+
+	appCtx := createAppContext(ctx, appStore, cloudClient)
 
 	apiServer := api.NewApiServer(appCtx, api.ApiServerOptions{
 		Port: 3000,
@@ -46,7 +53,9 @@ func main() {
 }
 
 // CreateGlobalContext creates a new context with the provided store and chunker
-func createAppContext(ctx context.Context, store *store.AppStore) context.Context {
+func createAppContext(ctx context.Context, store *store.AppStore, client cloud.CloudClient) context.Context {
 	ctx = context.WithValue(ctx, config.StoreKey, store)
+	ctx = context.WithValue(ctx, config.CloudClientKey, client)
+
 	return ctx
 }

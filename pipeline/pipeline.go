@@ -7,16 +7,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OmGuptaIND/cloud"
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/livestream"
 	"github.com/OmGuptaIND/recorder"
+	"github.com/OmGuptaIND/uploader"
 )
 
 type NewPipelineOptions struct {
-	PageUrl   string
+	RecordUrl string
 	StreamUrl string
-	Chunking  *recorder.ChunkingOptions
 }
 
 type Pipeline struct {
@@ -26,6 +27,7 @@ type Pipeline struct {
 	ID         string
 	Display    *display.Display
 	Recorder   *recorder.Recorder
+	Uploader   *uploader.Uploader
 	Livestream *livestream.Livestream
 
 	mtx *sync.Mutex
@@ -94,7 +96,7 @@ func (p *Pipeline) setupDisplay() error {
 		return fmt.Errorf("error Launching Pulse Sink: %w", err)
 	}
 
-	if _, err := display.LaunchChrome(p.PageUrl); err != nil {
+	if _, err := display.LaunchChrome(p.RecordUrl); err != nil {
 		return fmt.Errorf("error Launching Chrome: %w", err)
 	}
 
@@ -111,7 +113,6 @@ func (p *Pipeline) setupRecording() error {
 			ID:             p.ID,
 			Wg:             p.Wg,
 			Display:        p.Display,
-			Chunking:       p.Chunking,
 			ShowFfmpegLogs: false,
 		},
 	)
@@ -125,6 +126,28 @@ func (p *Pipeline) setupRecording() error {
 	}
 
 	p.Recorder = recorder
+
+	uploader, err := uploader.NewUploader(
+		p.ctx,
+		recorder.GetReader(),
+		&recorder.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("error Creating Uploader: %w", err)
+	}
+
+	p.Uploader = uploader
+
+	p.Wg.Add(1)
+
+	go func() {
+		defer p.Wg.Done()
+
+		if err := p.Uploader.Start(); err != nil {
+			log.Println("Error Starting Uploader", err)
+		}
+	}()
 
 	return nil
 }
@@ -155,20 +178,25 @@ func (p *Pipeline) setupLivestream() error {
 }
 
 // Stop: stops the Pipeline.
-func (p *Pipeline) Stop() error {
+func (p *Pipeline) Stop() (*cloud.CloudUploadPartCompleted, error) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	log.Println("Stopping Pipeline...", p.ID)
 
-	// Closes the context and all the resources, with it.
 	p.cancel()
 
 	if p.Display != nil {
 		p.Display.Close()
 	}
 
+	resp, err := p.Uploader.Stop()
+
+	if err != nil {
+		return nil, fmt.Errorf("error Stopping Uploader: %w", err)
+	}
+
 	p.Wg.Wait()
 	log.Println("Pipeline Stopped", p.ID)
 
-	return nil
+	return resp, nil
 }

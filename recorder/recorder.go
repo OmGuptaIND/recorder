@@ -1,30 +1,23 @@
 package recorder
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
-	"github.com/OmGuptaIND/pkg"
 )
-
-type ChunkingOptions struct {
-	ChunkDuration string
-}
 
 type NewRecorderOptions struct {
 	ID             string
 	ShowFfmpegLogs bool
 	Wg             *sync.WaitGroup
-	Chunking       *ChunkingOptions
 	*display.Display
 }
 
@@ -32,6 +25,7 @@ type Recorder struct {
 	ctx       context.Context
 	mtx       *sync.Mutex
 	recordCmd *exec.Cmd
+	stdout    *io.ReadCloser
 
 	CloseHook func() error
 
@@ -52,6 +46,7 @@ func NewRecorder(ctx context.Context, opts NewRecorderOptions) (*Recorder, error
 	return recorder, nil
 }
 
+// GetContext returns the context of the Recorder.
 func (r *Recorder) GetContext() context.Context {
 	return r.ctx
 }
@@ -61,29 +56,17 @@ func (r *Recorder) Done() <-chan error {
 	return r.done
 }
 
-// ChunkingDuration returns the duration of each chunk.
-func (r *Recorder) ChunkingDuration() string {
-	return r.Chunking.ChunkDuration
-}
+// GetRecorderStdout returns the stdout of the recording process.
+func (r *Recorder) GetReader() *bufio.Reader {
+	log.Println("Getting Recorder stdout...", r.stdout)
 
-// GetRecordinDirectoryPath returns the path where the recording will be saved.
-func (r *Recorder) GetRecordinDirectoryPath() string {
-	cwd, err := os.Getwd()
-
-	if err != nil {
-		log.Fatalf("Failed to get current working directory, %v", err)
+	if r.stdout == nil {
+		return nil
 	}
 
-	path := filepath.Join(cwd, config.RECORDING_DIR, r.ID)
+	reader := bufio.NewReader(*r.stdout)
 
-	pkg.CreateDirectory(path)
-
-	return path
-}
-
-// RecordingPath returns the path where the recording will be saved.
-func (r *Recorder) recordingFilePath() string {
-	return filepath.Join(r.GetRecordinDirectoryPath(), fmt.Sprintf("%s.mp4", r.ID))
+	return reader
 }
 
 // StartRecording starts the recording process.
@@ -110,35 +93,34 @@ func (r *Recorder) StartRecording() error {
 		"-i", r.GetPulseMonitorId(),
 		"-c:v", "libx264",
 		"-vf", "scale=1280:720",
-		"-preset", "veryslow",
+		"-preset", "ultrafast",
 		"-crf", "23",
 		"-c:a", "aac",
 		"-b:a", "128k",
 		"-async", "1",
-		"-f", "segment",
-		"-segment_start_number", "0",
-		"-segment_time", r.ChunkingDuration(),
-		"-segment_format", "mp4",
-		"-reset_timestamps", "1",
+		"-f", "mp4",
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-bufsize", "2M",
+		"-flush_packets", "1",
 		"-y",
 		"pipe:1",
 	)
 
-	if r.ShowFfmpegLogs {
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			log.Printf("Failed to create stderr pipe: %v", err)
-			return err
-		}
+	stdout, err := cmd.StdoutPipe()
 
-		copyOutput := func(writer io.Writer, reader io.Reader, name string) {
-			_, err := io.Copy(writer, reader)
-			if err != nil && err != io.EOF {
-				log.Printf("Error copying %s: %v", name, err)
-			}
-		}
-		go copyOutput(os.Stderr, stderr, "stderr")
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe: %v", err)
 	}
+
+	log.Println("Recording Command:", stdout)
+
+	r.stdout = &stdout
+
+	if err := r.showFfmpegLogs(); err != nil {
+		return fmt.Errorf("failed to show ffmpeg logs: %v", err)
+	}
+
+	r.recordCmd = cmd
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start FFmpeg: %v", err)
@@ -152,8 +134,6 @@ func (r *Recorder) StartRecording() error {
 			r.done <- err
 		}
 	}()
-
-	r.recordCmd = cmd
 
 	log.Println("Recorder process started successfully")
 
@@ -216,25 +196,8 @@ func (r *Recorder) Close() error {
 	log.Println("Recording process stopped")
 
 	r.recordCmd = nil
+	r.stdout = nil
 	close(r.done)
-
-	return nil
-}
-
-func (r *Recorder) VerifyOutputFile() error {
-	info, err := os.Stat(r.recordingFilePath())
-	if err != nil {
-		return fmt.Errorf("failed to stat output file: %v", err)
-	}
-	if info.Size() == 0 {
-		return fmt.Errorf("output file is empty")
-	}
-	log.Printf("Output file size: %d bytes", info.Size())
-
-	cmd := exec.Command("ffprobe", "-v", "error", r.recordingFilePath())
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("ffprobe check failed: %v, output: %s", err, output)
-	}
 
 	return nil
 }
@@ -245,4 +208,35 @@ func (r *Recorder) handleContextCancel() {
 	<-r.ctx.Done()
 	log.Println("Context Done, Stopping Recorder")
 	r.Close()
+}
+
+// showFfmpegLogs shows the ffmpeg logs.
+func (r *Recorder) showFfmpegLogs() error {
+	if !r.ShowFfmpegLogs {
+		return nil
+	}
+
+	stderr, err := r.recordCmd.StderrPipe()
+
+	if err != nil {
+		log.Printf("Failed to create stderr pipe: %v", err)
+		return err
+	}
+
+	r.Wg.Add(1)
+	copyOutput := func(writer io.Writer, reader io.Reader, name string) {
+		defer func() {
+			log.Println("Closing stderr pipe, Log Copy")
+			r.Wg.Done()
+		}()
+
+		_, err := io.Copy(writer, reader)
+		if err != nil && err != io.EOF {
+			log.Printf("Error copying %s: %v", name, err)
+		}
+	}
+
+	go copyOutput(os.Stderr, stderr, "stderr")
+
+	return nil
 }

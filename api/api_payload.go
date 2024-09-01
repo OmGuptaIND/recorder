@@ -7,9 +7,8 @@ type ChunkRequest struct {
 }
 
 type StartRecordingRequest struct {
-	Url       string       `json:"url"`
-	StreamUrl string       `json:"stream_url"`
-	Chunking  ChunkRequest `json:"chunking,omitempty"`
+	RecordUrl string `json:"record_url"`
+	StreamUrl string `json:"stream_url"`
 }
 
 type StartRecordingResponse struct {
@@ -22,7 +21,9 @@ type StopRecordingRequest struct {
 }
 
 type StopRecordingResponse struct {
-	Status string `json:"status"`
+	Id           string `json:"id"`
+	Status       string `json:"status"`
+	RecordingUrl string `json:"recording_url,omitempty"`
 }
 
 type ListRecordingsResponse struct {

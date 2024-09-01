@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/OmGuptaIND/pipeline"
-	"github.com/OmGuptaIND/recorder"
 	"github.com/OmGuptaIND/store"
 	"github.com/gofiber/fiber/v3"
 )
@@ -69,14 +68,8 @@ func (a *ApiServer) startRecording(c fiber.Ctx) error {
 	}
 
 	opts := &pipeline.NewPipelineOptions{
-		PageUrl:   req.Url,
+		RecordUrl: req.RecordUrl,
 		StreamUrl: req.StreamUrl,
-	}
-
-	if req.Chunking != (ChunkRequest{}) {
-		opts.Chunking = &recorder.ChunkingOptions{
-			ChunkDuration: req.Chunking.Duration,
-		}
 	}
 
 	p, err := pipeline.NewPipeline(a.ctx, opts)
@@ -112,7 +105,9 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "Pipeline not found")
 	}
 
-	if err := p.Stop(); err != nil {
+	resp, err := p.Stop()
+
+	if resp == nil || err != nil {
 		log.Println("Error Occured Stopping Pipeline", err)
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to stop recording pipeline")
 	}
@@ -120,7 +115,9 @@ func (a *ApiServer) stopRecording(c fiber.Ctx) error {
 	store.GetStore(&a.ctx).RemovePipeline(p.ID)
 
 	return c.JSON(StopRecordingResponse{
-		Status: "Recording stopped",
+		Status:       "Recording stopped",
+		Id:           p.ID,
+		RecordingUrl: *resp.Recording_Url,
 	})
 }
 
