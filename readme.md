@@ -48,7 +48,7 @@ curl --location 'http://localhost:3000/ping'
 curl --location 'http://localhost:3000/start-recording' \
 --header 'Content-Type: application/json' \
 --data '{
-    "url": "https://www.youtube.com/watch?v=cii6ruuycQA&ab_channel=OliviaRodrigoVEVO"
+    "record_url": "https://www.youtube.com/watch?v=cii6ruuycQA&ab_channel=OliviaRodrigoVEVO"
     "stream_url: "rtmp://a.rtmp.youtube.com/live2/<stream_key>"
 }'
 ```
@@ -60,7 +60,7 @@ curl --location 'http://localhost:3000/start-recording' \
 curl --location --request PATCH 'http://localhost:3000/stop-recording' \
 --header 'Content-Type: application/json' \
 --data '{
-    "id": "3f20a10a-2768-4080-ab5f-341cdc489eb2"
+    "id": "pipeline_1725213615468"
 }'
 ```
 
