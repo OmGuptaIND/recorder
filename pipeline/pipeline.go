@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/OmGuptaIND/chunker"
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/display"
 	"github.com/OmGuptaIND/livestream"
@@ -27,7 +26,6 @@ type Pipeline struct {
 	ID         string
 	Display    *display.Display
 	Recorder   *recorder.Recorder
-	Chunker    *chunker.Chunker
 	Livestream *livestream.Livestream
 
 	mtx *sync.Mutex
@@ -47,7 +45,6 @@ func NewPipeline(ctx context.Context, opts *NewPipelineOptions) (*Pipeline, erro
 		ctx:                ctx,
 		cancel:             cancel,
 		Wg:                 &sync.WaitGroup{},
-		Chunker:            chunker.GetChunker(&ctx),
 		mtx:                &sync.Mutex{},
 		NewPipelineOptions: opts,
 	}
@@ -122,8 +119,6 @@ func (p *Pipeline) setupRecording() error {
 	if err != nil {
 		return fmt.Errorf("error Creating Recorder: %w", err)
 	}
-
-	p.Chunker.AddRecorder(recorder)
 
 	if err := recorder.StartRecording(); err != nil {
 		return fmt.Errorf("error Starting Recording: %w", err)

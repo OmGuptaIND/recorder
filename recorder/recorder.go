@@ -33,8 +33,6 @@ type Recorder struct {
 	mtx       *sync.Mutex
 	recordCmd *exec.Cmd
 
-	Watcher *Watcher
-
 	CloseHook func() error
 
 	done chan error
@@ -50,18 +48,6 @@ func NewRecorder(ctx context.Context, opts NewRecorderOptions) (*Recorder, error
 		done:               make(chan error, 1),
 		NewRecorderOptions: &opts,
 	}
-
-	recorder.Watcher = NewWatcher(ctx, &WatcherOptions{
-		recorder: recorder,
-	})
-
-	if err := recorder.Watcher.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start Watcher: %v", err)
-	}
-
-	path := recorder.GetRecordinDirectoryPath()
-
-	log.Println("Recording Directory Path: ", path)
 
 	return recorder, nil
 }
@@ -100,12 +86,6 @@ func (r *Recorder) recordingFilePath() string {
 	return filepath.Join(r.GetRecordinDirectoryPath(), fmt.Sprintf("%s.mp4", r.ID))
 }
 
-// RecordingChunkPath returns the path where the recording chunk will be saved.
-// Returns the Path with the chunk number.
-func (r *Recorder) recordingChunkPath() string {
-	return filepath.Join(r.GetRecordinDirectoryPath(), "chunk_%05d.mp4")
-}
-
 // StartRecording starts the recording process.
 func (r *Recorder) StartRecording() error {
 	r.mtx.Lock()
@@ -141,7 +121,8 @@ func (r *Recorder) StartRecording() error {
 		"-segment_format", "mp4",
 		"-reset_timestamps", "1",
 		"-y",
-		r.recordingChunkPath())
+		"pipe:1",
+	)
 
 	if r.ShowFfmpegLogs {
 		stderr, err := cmd.StderrPipe()
@@ -175,29 +156,6 @@ func (r *Recorder) StartRecording() error {
 	r.recordCmd = cmd
 
 	log.Println("Recorder process started successfully")
-
-	return nil
-}
-
-// StartWatcher starts the Watcher process.
-func (r *Recorder) StartWatcher() error {
-	if r.Watcher == nil {
-		return fmt.Errorf("Watcher is not initialized")
-	}
-
-	if r.Watcher.ctx.Err() != nil {
-		return r.Watcher.ctx.Err()
-	}
-
-	r.Wg.Add(1)
-	go func() {
-		defer r.Wg.Done()
-		r.Watcher.Start()
-
-		<-r.Watcher.Done()
-
-		log.Println("Watcher Done")
-	}()
 
 	return nil
 }

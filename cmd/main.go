@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	"github.com/OmGuptaIND/api"
-	"github.com/OmGuptaIND/chunker"
 	"github.com/OmGuptaIND/config"
 	"github.com/OmGuptaIND/env"
 	"github.com/OmGuptaIND/pkg"
@@ -21,14 +20,7 @@ func main() {
 
 	appStore := store.NewStore()
 
-	recChunker, err := chunker.NewChunker(context.WithValue(ctx, config.StoreKey, appStore), &chunker.ChunkerOptions{})
-	defer recChunker.Stop()
-
-	if err != nil {
-		log.Fatalf("Error creating chunker: %v", err)
-	}
-
-	appCtx := createAppContext(ctx, appStore, recChunker)
+	appCtx := createAppContext(ctx, appStore)
 
 	apiServer := api.NewApiServer(appCtx, api.ApiServerOptions{
 		Port: 3000,
@@ -51,12 +43,10 @@ func main() {
 	}()
 
 	<-apiServer.Done()
-	recChunker.Wait()
 }
 
 // CreateGlobalContext creates a new context with the provided store and chunker
-func createAppContext(ctx context.Context, store *store.AppStore, chunker *chunker.Chunker) context.Context {
+func createAppContext(ctx context.Context, store *store.AppStore) context.Context {
 	ctx = context.WithValue(ctx, config.StoreKey, store)
-	ctx = context.WithValue(ctx, config.ChunkerKey, chunker)
 	return ctx
 }
