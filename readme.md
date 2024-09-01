@@ -34,6 +34,15 @@ After you SSH inside the container, run the following command.
 `./pulseaudio.sh`
 ```
 
+### ENVIRONMENT VARIABLES
+
+- `BUCKET_ENDPOINT` - AWS S3 Bucket Endpoint.
+- `BUCKET_NAME` - AWS S3 Bucket Name.
+- `BUCKET_KEY_ID` - AWS S3 Bucket Key ID.
+- `BUCKET_APP_KEY` - AWS S3 Bucket Secret Key.
+- `BUCKET_REGION` - AWS S3 Bucket Region.
+
+
 ### API ENDPOINTS
 
 - `/ping` - To check the server is running.
